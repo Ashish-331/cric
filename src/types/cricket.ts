@@ -188,7 +188,9 @@ export type InningsAction =
   | { type: 'RETURN_BATTER'; playerId: string; slot: 'striker' | 'nonStriker'; timestamp: number }
   | { type: 'SELECT_BOWLER'; bowlerId: string; timestamp: number }
   | { type: 'SELECT_BATTER'; slot: 'striker' | 'nonStriker'; playerId: string; timestamp: number }
-  | { type: 'SWAP_ENDS'; timestamp: number };
+  | { type: 'SWAP_ENDS'; timestamp: number }
+  | { type: 'UNDO'; timestamp: number }
+  | { type: 'END_INNINGS'; timestamp: number };
 
 export interface BatterStats {
   playerId: string;
@@ -299,6 +301,7 @@ export interface Match {
   delayNotes?: string;
   tournamentId?: string;
   revision?: number;
+  authorityEpoch?: number;
   resultDetails?: MatchResultDetails;
 }
 

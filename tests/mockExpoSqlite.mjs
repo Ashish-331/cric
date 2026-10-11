@@ -1,14 +1,49 @@
 class MockSQLiteDatabase {
   constructor() {
     this.tables = new Map();
+    this.transactionSnapshot = null;
+  }
+
+  cloneTables() {
+    const clone = new Map();
+    for (const [table, map] of this.tables.entries()) {
+      const mapClone = new Map();
+      for (const [k, v] of map.entries()) {
+        mapClone.set(k, { ...v });
+      }
+      clone.set(table, mapClone);
+    }
+    return clone;
+  }
+
+  async withTransactionAsync(fn) {
+    const snapshot = this.cloneTables();
+    try {
+      const res = await fn();
+      return res;
+    } catch (err) {
+      this.tables = snapshot;
+      throw err;
+    }
   }
 
   async execAsync(sql) {
+    if (sql.includes('BEGIN')) {
+      this.transactionSnapshot = this.cloneTables();
+    } else if (sql.includes('COMMIT')) {
+      this.transactionSnapshot = null;
+    } else if (sql.includes('ROLLBACK')) {
+      if (this.transactionSnapshot) {
+        this.tables = this.transactionSnapshot;
+        this.transactionSnapshot = null;
+      }
+    }
     return Promise.resolve();
   }
 
   async runAsync(sql, params = []) {
-    if (sql.includes('INSERT OR REPLACE INTO local_matches') || sql.includes('INSERT INTO local_matches')) {
+    const cleanSql = sql.replace(/\s+/g, ' ').trim();
+    if (cleanSql.includes('INSERT OR REPLACE INTO local_matches') || cleanSql.includes('INSERT INTO local_matches')) {
       const [id, title, status, tourneyId, rev, epoch, json, updated, isDemo] = params;
       if (!this.tables.has('local_matches')) this.tables.set('local_matches', new Map());
       this.tables.get('local_matches').set(id, {
@@ -22,7 +57,18 @@ class MockSQLiteDatabase {
         last_updated: updated,
         is_demo: isDemo,
       });
-    } else if (sql.includes('INSERT INTO local_actions')) {
+    } else if (cleanSql.includes('UPDATE local_matches SET revision = ?')) {
+      const [nextRev, json, updated, id, expectedRev] = params;
+      const match = this.tables.get('local_matches')?.get(id);
+      if (match) {
+        if (expectedRev !== undefined && match.revision !== expectedRev) {
+          return { changes: 0, lastInsertRowId: 0 };
+        }
+        match.revision = nextRev;
+        match.json_data = json;
+        match.last_updated = updated;
+      }
+    } else if (cleanSql.includes('INSERT INTO local_actions')) {
       const [id, matchId, type, seq, expRev, payload, created] = params;
       if (!this.tables.has('local_actions')) this.tables.set('local_actions', new Map());
       this.tables.get('local_actions').set(id, {
@@ -30,10 +76,11 @@ class MockSQLiteDatabase {
         match_id: matchId,
         action_type: type,
         sequence_number: seq,
+        expected_revision: expRev,
         payload,
         created_at: created,
       });
-    } else if (sql.includes('INSERT INTO sync_outbox')) {
+    } else if (cleanSql.includes('INSERT INTO sync_outbox')) {
       const [id, matchId, actionId, expRev, epoch, type, payload, created, status] = params;
       if (!this.tables.has('sync_outbox')) this.tables.set('sync_outbox', new Map());
       this.tables.get('sync_outbox').set(id, {
@@ -50,7 +97,7 @@ class MockSQLiteDatabase {
         last_error: null,
         synced_at: null,
       });
-    } else if (sql.includes("UPDATE sync_outbox SET status = 'synced'")) {
+    } else if (cleanSql.includes("UPDATE sync_outbox SET status = 'synced'")) {
       const syncedAt = params[0];
       const ids = params.slice(1);
       const outbox = this.tables.get('sync_outbox') || new Map();
@@ -61,9 +108,26 @@ class MockSQLiteDatabase {
           entry.synced_at = syncedAt;
         }
       }
-    } else if (sql.includes('DELETE FROM local_matches')) {
+    } else if (cleanSql.includes('UPDATE sync_outbox SET status = ?')) {
+      const [status, error, eventId] = params;
+      const outbox = this.tables.get('sync_outbox') || new Map();
+      if (outbox.has(eventId)) {
+        const entry = outbox.get(eventId);
+        entry.status = status;
+        entry.retry_count = (entry.retry_count || 0) + 1;
+        entry.last_error = error;
+      }
+    } else if (cleanSql.includes('DELETE FROM local_matches')) {
       const id = params[0];
       this.tables.get('local_matches')?.delete(id);
+    } else if (cleanSql.includes('DELETE FROM sync_outbox')) {
+      const matchId = params[0];
+      const outbox = this.tables.get('sync_outbox');
+      if (outbox) {
+        for (const [id, entry] of outbox.entries()) {
+          if (entry.match_id === matchId) outbox.delete(id);
+        }
+      }
     }
     return { changes: 1, lastInsertRowId: 1 };
   }
@@ -72,6 +136,10 @@ class MockSQLiteDatabase {
     if (sql.includes('FROM local_matches WHERE id = ?')) {
       const id = params[0];
       return this.tables.get('local_matches')?.get(id) || null;
+    }
+    if (sql.includes('SELECT count(*) as count FROM local_matches')) {
+      const count = this.tables.get('local_matches')?.size || 0;
+      return { count };
     }
     if (sql.includes('FROM migration_meta')) {
       return null;
@@ -87,9 +155,14 @@ class MockSQLiteDatabase {
       }
       return matches;
     }
-    if (sql.includes("FROM sync_outbox WHERE status = 'pending'")) {
+    if (sql.includes('FROM sync_outbox')) {
       const outbox = Array.from(this.tables.get('sync_outbox')?.values() || []);
-      return outbox.filter((e) => e.status === 'pending');
+      if (sql.includes('status = ?') || sql.includes("status = 'pending'")) {
+        return outbox.filter(
+          (e) => e.status === 'pending' || (e.status === 'failed' && (e.retry_count || 0) < 10)
+        );
+      }
+      return outbox;
     }
     return [];
   }

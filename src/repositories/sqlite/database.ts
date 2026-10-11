@@ -129,48 +129,65 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
  * Preserves legacy keys by creating a snapshot backup first.
  */
 async function migrateFromAsyncStorage(db: SQLite.SQLiteDatabase): Promise<void> {
-  try {
-    const metaRow = await db.getFirstAsync<{ value: string }>(
-      'SELECT value FROM migration_meta WHERE key = ?',
-      ['async_storage_v2_to_sqlite']
-    );
+  const metaRow = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM migration_meta WHERE key = ?',
+    ['async_storage_v2_to_sqlite']
+  );
 
-    if (metaRow) {
-      return; // Already migrated
-    }
+  if (metaRow) {
+    return; // Already migrated successfully
+  }
 
-    // 1. Snapshot legacy matches
-    const v2IndexRaw = await AsyncStorage.getItem('@cric_match_ids_v2');
-    const legacyMatchesRaw = await AsyncStorage.getItem('@cric_matches_v1');
+  // 1. Snapshot ALL legacy collections before reading
+  const v2IndexRaw = await AsyncStorage.getItem('@cric_match_ids_v2');
+  const legacyMatchesRaw = await AsyncStorage.getItem('@cric_matches_v1');
+  const teamsRaw = await AsyncStorage.getItem('@cric_teams_v1');
+  const tourneysRaw = await AsyncStorage.getItem('@cric_tournaments_v1');
+  const entriesRaw = await AsyncStorage.getItem('@cric_tournament_entries_v1');
 
-    if (legacyMatchesRaw) {
-      await AsyncStorage.setItem('@cric_matches_v1_backup', legacyMatchesRaw);
-    }
+  if (v2IndexRaw) await AsyncStorage.setItem('@cric_match_ids_v2_backup', v2IndexRaw);
+  if (legacyMatchesRaw) await AsyncStorage.setItem('@cric_matches_v1_backup', legacyMatchesRaw);
+  if (teamsRaw) await AsyncStorage.setItem('@cric_teams_v1_backup', teamsRaw);
+  if (tourneysRaw) await AsyncStorage.setItem('@cric_tournaments_v1_backup', tourneysRaw);
+  if (entriesRaw) await AsyncStorage.setItem('@cric_tournament_entries_v1_backup', entriesRaw);
 
-    const matchesToMigrate: Match[] = [];
+  const matchesToMigrate: Match[] = [];
 
-    if (v2IndexRaw) {
-      try {
-        const matchIds: string[] = JSON.parse(v2IndexRaw);
-        for (const mId of matchIds) {
-          const raw = await AsyncStorage.getItem(`@cric_match_${mId}`);
-          if (raw) {
-            matchesToMigrate.push(JSON.parse(raw));
-          }
-        }
-      } catch (e) {
-        console.warn('Error reading v2 match index during migration:', e);
-      }
-    } else if (legacyMatchesRaw) {
-      try {
-        const parsed: Match[] = JSON.parse(legacyMatchesRaw);
-        matchesToMigrate.push(...parsed);
-      } catch (e) {
-        console.warn('Error reading v1 matches during migration:', e);
+  if (v2IndexRaw) {
+    const matchIds: string[] = JSON.parse(v2IndexRaw);
+    for (const mId of matchIds) {
+      const raw = await AsyncStorage.getItem(`@cric_match_${mId}`);
+      if (raw) {
+        matchesToMigrate.push(JSON.parse(raw));
       }
     }
+  } else if (legacyMatchesRaw) {
+    const parsed: Match[] = JSON.parse(legacyMatchesRaw);
+    matchesToMigrate.push(...parsed);
+  }
 
-    // Insert migrated matches into SQLite
+  const teamsToMigrate: Team[] = teamsRaw ? JSON.parse(teamsRaw) : [];
+  const tourneysToMigrate: Tournament[] = tourneysRaw ? JSON.parse(tourneysRaw) : [];
+  const entriesToMigrate: TournamentEntry[] = entriesRaw ? JSON.parse(entriesRaw) : [];
+
+  // 2. Execute migration inside an atomic SQLite transaction
+  const runInTransaction = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (typeof (db as any).withTransactionAsync === 'function') {
+      return (db as any).withTransactionAsync(fn);
+    }
+    await db.execAsync('BEGIN IMMEDIATE;');
+    try {
+      const res = await fn();
+      await db.execAsync('COMMIT;');
+      return res;
+    } catch (err) {
+      await db.execAsync('ROLLBACK;');
+      throw err;
+    }
+  };
+
+  await runInTransaction(async () => {
+    // Insert matches
     for (const match of matchesToMigrate) {
       const isDemo = match.id.includes('demo') || match.title.includes('Demo') ? 1 : 0;
       await db.runAsync(
@@ -190,87 +207,71 @@ async function migrateFromAsyncStorage(db: SQLite.SQLiteDatabase): Promise<void>
       );
     }
 
-    // 2. Migrate teams
-    const teamsRaw = await AsyncStorage.getItem('@cric_teams_v1');
-    if (teamsRaw) {
-      try {
-        const teams: Team[] = JSON.parse(teamsRaw);
-        for (const team of teams) {
-          await db.runAsync(
-            `INSERT OR REPLACE INTO local_teams (id, name, short_name, captain_player_id, json_data, last_updated)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              team.id,
-              team.name,
-              team.shortName,
-              team.captainPlayerId || null,
-              JSON.stringify(team),
-              Date.now(),
-            ]
-          );
+    // Insert teams and players
+    for (const team of teamsToMigrate) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO local_teams (id, name, short_name, captain_player_id, json_data, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [team.id, team.name, team.shortName, team.captainPlayerId || null, JSON.stringify(team), Date.now()]
+      );
 
-          // Populate local_players from team players
-          for (const player of team.players) {
-            await db.runAsync(
-              `INSERT OR REPLACE INTO local_players (id, name, phone_number, account_id, is_verified, is_guest, json_data, last_updated)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                player.id,
-                player.name,
-                player.phoneNumber || null,
-                player.claimedByUserId || null,
-                player.isVerified ? 1 : 0,
-                player.isGuest ? 1 : 0,
-                JSON.stringify(player),
-                Date.now(),
-              ]
-            );
-          }
-        }
-      } catch (e) {
-        console.warn('Error migrating teams to SQLite:', e);
+      for (const player of team.players) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO local_players (id, name, phone_number, account_id, is_verified, is_guest, json_data, last_updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            player.id,
+            player.name,
+            player.phoneNumber || null,
+            player.claimedByUserId || null,
+            player.isVerified ? 1 : 0,
+            player.isGuest ? 1 : 0,
+            JSON.stringify(player),
+            Date.now(),
+          ]
+        );
       }
     }
 
-    // 3. Migrate tournaments & entries
-    const tourneysRaw = await AsyncStorage.getItem('@cric_tournaments_v1');
-    if (tourneysRaw) {
-      try {
-        const tourneys: Tournament[] = JSON.parse(tourneysRaw);
-        for (const t of tourneys) {
-          await db.runAsync(
-            `INSERT OR REPLACE INTO local_tournaments (id, name, format, status, organizer_id, json_data, last_updated)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [t.id, t.name, t.format, t.status, t.creatorUserId || null, JSON.stringify(t), Date.now()]
-          );
-        }
-      } catch (e) {
-        console.warn('Error migrating tournaments to SQLite:', e);
-      }
+    // Insert tournaments
+    for (const t of tourneysToMigrate) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO local_tournaments (id, name, format, status, organizer_id, json_data, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.name, t.format, t.status, t.creatorUserId || null, JSON.stringify(t), Date.now()]
+      );
     }
 
-    const entriesRaw = await AsyncStorage.getItem('@cric_tournament_entries_v1');
-    if (entriesRaw) {
-      try {
-        const entries: TournamentEntry[] = JSON.parse(entriesRaw);
-        for (const entry of entries) {
-          await db.runAsync(
-            `INSERT OR REPLACE INTO local_tournament_entries (id, tournament_id, team_id, status, json_data, last_updated)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [entry.id, entry.tournamentId, entry.teamId, entry.status, JSON.stringify(entry), Date.now()]
-          );
-        }
-      } catch (e) {
-        console.warn('Error migrating entries to SQLite:', e);
-      }
+    // Insert entries
+    for (const entry of entriesToMigrate) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO local_tournament_entries (id, tournament_id, team_id, status, json_data, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [entry.id, entry.tournamentId, entry.teamId, entry.status, JSON.stringify(entry), Date.now()]
+      );
     }
 
-    // Mark migration complete
+    // 3. Verified Count Integrity Check
+    const matchCountRow = await db.getFirstAsync<{ count: number }>('SELECT count(*) as count FROM local_matches');
+    if ((matchCountRow?.count || 0) < matchesToMigrate.length) {
+      throw new Error(
+        `Migration verification failed: expected at least ${matchesToMigrate.length} matches, but found ${matchCountRow?.count}`
+      );
+    }
+
+    // 4. Mark migration complete only upon verified success
     await db.runAsync(
       'INSERT INTO migration_meta (key, value, applied_at) VALUES (?, ?, ?)',
-      ['async_storage_v2_to_sqlite', 'completed', Date.now()]
+      [
+        'async_storage_v2_to_sqlite',
+        JSON.stringify({
+          matches: matchesToMigrate.length,
+          teams: teamsToMigrate.length,
+          tournaments: tourneysToMigrate.length,
+          entries: entriesToMigrate.length,
+        }),
+        Date.now(),
+      ]
     );
-  } catch (err) {
-    console.error('Migration from AsyncStorage to SQLite failed:', err);
-  }
+  });
 }

@@ -132,19 +132,16 @@ export default function LoginScreen() {
     const fullPhone = `${selectedCountry.code}${phoneNumber.trim()}`;
     try {
       CricketHaptics.milestone();
-      let displayName = userProfile?.name;
+      const displayName = userProfile?.name;
 
-      // Real Supabase Auth verification
-      try {
-        const authResult = await AuthService.verifyOtp(fullPhone, entered, displayName);
-        displayName = authResult.profile.displayName;
-      } catch (authErr: any) {
-        // In local development sandbox mode, fallback to verified profile
-        console.warn('Supabase Auth verification notice:', authErr.message);
-      }
+      // Fail-closed Supabase Auth verification - rejects invalid OTP codes and unreachable auth service
+      const authResult = await AuthService.verifyOtp(fullPhone, entered, displayName);
 
+      // Store canonical authenticated Supabase account identity
       await updateUserProfile({
+        id: authResult.user.id,
         phoneNumber: fullPhone,
+        name: authResult.profile.displayName || displayName || 'Cric Player',
         isGuest: false,
         isVerified: true,
       });

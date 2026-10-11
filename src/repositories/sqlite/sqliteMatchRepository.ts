@@ -85,48 +85,104 @@ export class SQLiteMatchRepository implements IMatchRepository {
     matchId: string,
     action: InningsAction,
     expectedRevision: number,
-    authorityEpoch: number
+    authorityEpoch: number,
+    nextMatchState?: Match,
+    actionId?: string
   ): Promise<{ revision: number; actionId: string }> {
     const db = await getDatabase();
-    const actionId = `act_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const finalActionId = actionId || `act_${matchId}_r${expectedRevision + 1}_${Date.now()}`;
     const now = Date.now();
     const nextRevision = expectedRevision + 1;
 
-    // Check if match exists and verify revision
-    const matchRow = await db.getFirstAsync<{ revision: number; json_data: string }>(
-      'SELECT revision, json_data FROM local_matches WHERE id = ?',
-      [matchId]
-    );
+    const runInTransaction = async <T>(fn: () => Promise<T>): Promise<T> => {
+      if (typeof (db as any).withTransactionAsync === 'function') {
+        return (db as any).withTransactionAsync(fn);
+      }
+      await db.execAsync('BEGIN IMMEDIATE;');
+      try {
+        const res = await fn();
+        await db.execAsync('COMMIT;');
+        return res;
+      } catch (err) {
+        await db.execAsync('ROLLBACK;');
+        throw err;
+      }
+    };
 
-    if (!matchRow) {
-      throw new Error(`Match ${matchId} not found in local persistence`);
-    }
+    return runInTransaction(async () => {
+      // 1. Fetch current match projection and verify revision
+      const matchRow = await db.getFirstAsync<{ revision: number; authority_epoch: number; json_data: string }>(
+        'SELECT revision, authority_epoch, json_data FROM local_matches WHERE id = ?',
+        [matchId]
+      );
 
-    // Insert action and add to sync outbox
-    await db.runAsync(
-      `INSERT INTO local_actions (id, match_id, action_type, sequence_number, expected_revision, payload, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [actionId, matchId, action.type, nextRevision, expectedRevision, JSON.stringify(action), now]
-    );
+      if (!matchRow) {
+        throw new Error(`Match ${matchId} not found in local persistence`);
+      }
 
-    await db.runAsync(
-      `INSERT INTO sync_outbox
-        (id, match_id, action_id, expected_revision, authority_epoch, action_type, payload, created_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        `out_${now}_${Math.random().toString(36).substring(2, 6)}`,
-        matchId,
-        actionId,
-        expectedRevision,
-        authorityEpoch,
-        action.type,
-        JSON.stringify(action),
-        now,
-        'pending',
-      ]
-    );
+      if (matchRow.revision !== expectedRevision) {
+        throw new Error(
+          `Revision conflict on match ${matchId}: expected revision ${expectedRevision}, but stored revision is ${matchRow.revision}`
+        );
+      }
 
-    return { revision: nextRevision, actionId };
+      if (matchRow.authority_epoch !== authorityEpoch) {
+        throw new Error(
+          `Authority epoch mismatch on match ${matchId}: expected epoch ${authorityEpoch}, but stored epoch is ${matchRow.authority_epoch}`
+        );
+      }
+
+      // 2. Insert into local immutable action ledger
+      await db.runAsync(
+        `INSERT INTO local_actions (id, match_id, action_type, sequence_number, expected_revision, payload, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [finalActionId, matchId, action.type, nextRevision, expectedRevision, JSON.stringify(action), now]
+      );
+
+      // 3. Insert into sync outbox
+      const outboxId = `out_${now}_${Math.random().toString(36).substring(2, 7)}`;
+      await db.runAsync(
+        `INSERT INTO sync_outbox
+          (id, match_id, action_id, expected_revision, authority_epoch, action_type, payload, created_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          outboxId,
+          matchId,
+          finalActionId,
+          expectedRevision,
+          authorityEpoch,
+          action.type,
+          JSON.stringify(action),
+          now,
+          'pending',
+        ]
+      );
+
+      // 4. Atomically advance match revision and persist projection
+      let updatedMatchJson: string;
+      if (nextMatchState) {
+        const updatedMatch: Match = {
+          ...nextMatchState,
+          revision: nextRevision,
+          lastUpdated: now,
+        };
+        updatedMatchJson = JSON.stringify(updatedMatch);
+      } else {
+        const existingMatch: Match = JSON.parse(matchRow.json_data);
+        existingMatch.revision = nextRevision;
+        existingMatch.lastUpdated = now;
+        updatedMatchJson = JSON.stringify(existingMatch);
+      }
+
+      await db.runAsync(
+        `UPDATE local_matches
+         SET revision = ?, json_data = ?, last_updated = ?
+         WHERE id = ? AND revision = ?`,
+        [nextRevision, updatedMatchJson, now, matchId, expectedRevision]
+      );
+
+      return { revision: nextRevision, actionId: finalActionId };
+    });
   }
 
   async getPendingSyncOutbox(): Promise<OutboxEvent[]> {
@@ -145,7 +201,10 @@ export class SQLiteMatchRepository implements IMatchRepository {
       status: string;
       last_error: string | null;
     }>(
-      `SELECT * FROM sync_outbox WHERE status = 'pending' ORDER BY created_at ASC LIMIT 50`
+      `SELECT * FROM sync_outbox
+       WHERE (status = 'pending' OR (status = 'failed' AND retry_count < 10))
+       ORDER BY created_at ASC
+       LIMIT 50`
     );
 
     return rows.map((r) => ({
@@ -174,11 +233,12 @@ export class SQLiteMatchRepository implements IMatchRepository {
     );
   }
 
-  async markOutboxFailed(eventId: string, error: string): Promise<void> {
+  async markOutboxFailed(eventId: string, error: string, isPermanentConflict: boolean = false): Promise<void> {
     const db = await getDatabase();
+    const status = isPermanentConflict ? 'conflict' : 'failed';
     await db.runAsync(
-      `UPDATE sync_outbox SET status = 'failed', retry_count = retry_count + 1, last_error = ? WHERE id = ?`,
-      [error, eventId]
+      `UPDATE sync_outbox SET status = ?, retry_count = retry_count + 1, last_error = ? WHERE id = ?`,
+      [status, error, eventId]
     );
   }
 }

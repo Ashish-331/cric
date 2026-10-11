@@ -1,22 +1,26 @@
 // Supabase Edge Function: commit-match-action
-// Validates JWT, verifies scoring authority, validates scoring delivery via pure cricketEngine,
-// and atomically commits canonical revision and append-only match_actions.
+// Validates JWT, derives authentic actor session, validates scoring delivery via pure CricketEngine,
+// computes canonical state progression, and atomically commits canonical revision and append-only match_actions.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import {
+  CricketEngine,
+  validateDeliveryInput,
+} from '../_shared/cricketEngine.ts';
+import type {
+  Match,
+  Innings,
+  InningsAction,
+  BallInput,
+} from '../_shared/types.ts';
 
 interface CommitActionPayload {
   matchId: string;
   expectedRevision: number;
   actionId: string;
   authorityEpoch: number;
-  action: {
-    type: string;
-    delivery?: any;
-    playerId?: string;
-    slot?: string;
-    dismissalType?: string;
-  };
+  action: InningsAction;
 }
 
 serve(async (req: Request) => {
@@ -61,10 +65,10 @@ serve(async (req: Request) => {
     const { matchId, expectedRevision, actionId, authorityEpoch, action } = body;
 
     if (!matchId || !actionId || expectedRevision === undefined || !action) {
-      return new Response(JSON.stringify({ error: 'Invalid payload: matchId, actionId, expectedRevision, action required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ error: 'Invalid payload: matchId, actionId, expectedRevision, action required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     // 3. Idempotency Check: Was this action already committed?
@@ -94,90 +98,223 @@ serve(async (req: Request) => {
       );
     }
 
-    // 4. Retrieve canonical match & verify scoring authority
-    const { data: match, error: matchError } = await supabase
+    // 4. Retrieve canonical match to compute state progression
+    const { data: matchRow, error: matchError } = await supabase
       .from('matches')
       .select('*')
       .eq('id', matchId)
       .single();
 
-    if (matchError || !match) {
+    if (matchError || !matchRow) {
       return new Response(JSON.stringify({ error: 'Match not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    // Check authority: must match assigned scorer or hold active epoch authority
-    const isAssignedScorer = match.assigned_scorer_account_id === actorAccountId;
-    const { data: authorityRecord } = await supabase
-      .from('match_scorer_authority')
-      .select('*')
-      .eq('match_id', matchId)
-      .eq('account_id', actorAccountId)
-      .eq('authority_epoch', authorityEpoch)
-      .is('revoked_at', null)
-      .maybeSingle();
+    // 5. Parse current match state payload
+    const currentMatchState: Match = (typeof matchRow.state_payload === 'string'
+      ? JSON.parse(matchRow.state_payload)
+      : matchRow.state_payload) || {
+      id: matchId,
+      title: matchRow.title,
+      format: matchRow.format,
+      status: matchRow.sporting_status,
+      revision: matchRow.revision,
+      innings: [],
+      currentInningsIndex: 0,
+      rules: { totalOvers: 20, playersPerTeam: 11, wideValue: 1, noBallValue: 1 },
+    };
 
-    if (!isAssignedScorer && !authorityRecord) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized: actor does not hold scoring authority for this epoch' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
+    const innIndex = currentMatchState.currentInningsIndex ?? 0;
+    const currentInnings = currentMatchState.innings?.[innIndex];
+
+    // 6. Cricket Engine Domain Validation
+    if (action.type === 'DELIVERY') {
+      if (!currentInnings) {
+        return new Response(
+          JSON.stringify({ error: 'No active innings found for scoring delivery.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (currentInnings.isCompleted) {
+        return new Response(
+          JSON.stringify({ error: 'Current innings is already completed.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const deliveryValidation = validateDeliveryInput(
+        action.delivery,
+        currentInnings,
+        currentMatchState.rules
       );
+
+      if (!deliveryValidation.isValid) {
+        return new Response(
+          JSON.stringify({
+            error: 'INVALID_DELIVERY',
+            reason: deliveryValidation.reason || 'Delivery failed cricket rules validation',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
-    // 5. Optimistic concurrency check: match revision must match expected revision
-    if (match.revision !== expectedRevision) {
-      return new Response(
-        JSON.stringify({
-          error: 'REVISION_CONFLICT',
-          canonicalRevision: match.revision,
-          message: `Expected revision ${expectedRevision} but current canonical revision is ${match.revision}`,
-        }),
-        { status: 409, headers: { 'Content-Type': 'application/json' } }
-      );
+    // 7. Compute Next State Progression using CricketEngine
+    let nextMatchState: Match = { ...currentMatchState };
+    const nextRevision = expectedRevision + 1;
+
+    if (currentInnings) {
+      const updatedInningsArray: [Innings, Innings?] = [...currentMatchState.innings];
+
+      if (action.type === 'DELIVERY') {
+        const ballInput: BallInput = {
+          commandId: actionId,
+          runsBat: action.delivery.runsBat,
+          runsExtra: action.delivery.runsExtra,
+          extraType: action.delivery.extraType,
+          isWicket: action.delivery.isWicket,
+          dismissalType: action.delivery.wicketDetails?.dismissalType,
+          dismissedPlayerId: action.delivery.wicketDetails?.playerDismissedId,
+          catcherFielderId: action.delivery.wicketDetails?.fielderId,
+          isBoundary: action.delivery.isBoundary,
+          isSix: action.delivery.isSix,
+          commentary: action.delivery.commentary,
+          shotSector: action.delivery.shotSector,
+          pitchLength: action.delivery.pitchLength,
+          pitchLine: action.delivery.pitchLine,
+          pitchCoordinate: action.delivery.pitchCoordinate,
+        };
+
+        const result = CricketEngine.recordDelivery(
+          currentInnings,
+          ballInput,
+          currentMatchState.rules,
+          currentMatchState.targetRuns,
+          action.delivery.timestamp || Date.now()
+        );
+
+        updatedInningsArray[innIndex] = result.innings;
+        nextMatchState = {
+          ...nextMatchState,
+          innings: updatedInningsArray,
+          status: result.isMatchComplete ? 'completed' : nextMatchState.status,
+          result: result.isMatchComplete
+            ? CricketEngine.evaluateMatchResult(nextMatchState) || 'Match Concluded'
+            : nextMatchState.result,
+        };
+      } else if (action.type === 'RETIRE_BATTER') {
+        updatedInningsArray[innIndex] = CricketEngine.retireBatter(
+          currentInnings,
+          action.playerId,
+          action.dismissalType,
+          action.timestamp || Date.now()
+        );
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'RETURN_BATTER') {
+        updatedInningsArray[innIndex] = CricketEngine.returnBatter(
+          currentInnings,
+          action.playerId,
+          action.slot,
+          action.timestamp || Date.now()
+        );
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'SELECT_BOWLER') {
+        const actions = [...(currentInnings.actions || []), action];
+        updatedInningsArray[innIndex] = {
+          ...currentInnings,
+          currentBowlerId: action.bowlerId,
+          actions,
+        };
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'SELECT_BATTER') {
+        const actions = [...(currentInnings.actions || []), action];
+        const updatedBatterStats = { ...currentInnings.batterStats };
+        if (!updatedBatterStats[action.playerId]) {
+          updatedBatterStats[action.playerId] = {
+            playerId: action.playerId,
+            runs: 0,
+            ballsFaced: 0,
+            fours: 0,
+            sixes: 0,
+            strikeRate: 0,
+            isOut: false,
+            battingOrder: Object.keys(updatedBatterStats).length + 1,
+          };
+        }
+        updatedInningsArray[innIndex] = {
+          ...currentInnings,
+          batterStats: updatedBatterStats,
+          currentStrikerId: action.slot === 'striker' ? action.playerId : currentInnings.currentStrikerId,
+          currentNonStrikerId: action.slot === 'nonStriker' ? action.playerId : currentInnings.currentNonStrikerId,
+          actions,
+        };
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'SWAP_ENDS') {
+        const actions = [...(currentInnings.actions || []), action];
+        updatedInningsArray[innIndex] = {
+          ...currentInnings,
+          currentStrikerId: currentInnings.currentNonStrikerId,
+          currentNonStrikerId: currentInnings.currentStrikerId,
+          actions,
+        };
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'UNDO') {
+        const pastActions = currentInnings.actions?.slice(0, -1) || [];
+        updatedInningsArray[innIndex] = CricketEngine.replayInnings(
+          currentMatchState.innings[innIndex]!,
+          pastActions,
+          currentMatchState.rules,
+          currentMatchState.targetRuns
+        );
+        nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      }
     }
 
-    // 6. Execute atomic update
-    const nextRevision = match.revision + 1;
-    const nextSequence = (match.revision || 0) + 1;
+    nextMatchState.revision = nextRevision;
+    nextMatchState.lastUpdated = Date.now();
 
-    // Insert action ledger entry
-    const { error: insertActionError } = await supabase.from('match_actions').insert({
-      match_id: matchId,
-      action_id: actionId,
-      sequence_number: nextSequence,
-      expected_revision: expectedRevision,
-      actor_account_id: actorAccountId,
-      action_type: action.type,
-      payload: action,
+    // 8. Atomically Commit via PostgreSQL RPC commit_match_action_atomic
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('commit_match_action_atomic', {
+      p_match_id: matchId,
+      p_action_id: actionId,
+      p_expected_revision: expectedRevision,
+      p_authority_epoch: authorityEpoch,
+      p_actor_account_id: actorAccountId,
+      p_action_type: action.type,
+      p_action_payload: action,
+      p_next_state_payload: nextMatchState,
+      p_next_revision: nextRevision,
     });
 
-    if (insertActionError) {
-      return new Response(JSON.stringify({ error: 'Failed to record action ledger entry', details: insertActionError.message }), {
+    if (rpcError) {
+      const msg = rpcError.message || '';
+      if (msg.includes('UNAUTHORIZED')) {
+        return new Response(JSON.stringify({ error: 'UNAUTHORIZED', message: msg }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg.includes('MATCH_NOT_FOUND')) {
+        return new Response(JSON.stringify({ error: 'MATCH_NOT_FOUND', message: msg }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ error: 'DATABASE_ERROR', details: msg }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    // Advance match revision conditionally
-    const { data: updatedMatch, error: updateError } = await supabase
-      .from('matches')
-      .update({
-        revision: nextRevision,
-        last_updated: new Date().toISOString(),
-      })
-      .eq('id', matchId)
-      .eq('revision', expectedRevision)
-      .select()
-      .single();
-
-    if (updateError || !updatedMatch) {
+    if (!rpcResult.accepted) {
       return new Response(
         JSON.stringify({
           error: 'REVISION_CONFLICT',
-          canonicalRevision: match.revision,
-          message: 'Concurrent update detected. Please reconcile match revisions.',
+          canonicalRevision: rpcResult.canonical_revision,
+          message: rpcResult.message || 'Concurrency revision conflict',
         }),
         { status: 409, headers: { 'Content-Type': 'application/json' } }
       );
@@ -186,9 +323,10 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         accepted: true,
-        revision: nextRevision,
+        idempotentReplay: Boolean(rpcResult.idempotent_replay),
+        revision: rpcResult.revision,
         actionId,
-        match: updatedMatch,
+        match: rpcResult.match,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

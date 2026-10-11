@@ -20,6 +20,7 @@ import { ScorecardTable } from '../../../components/match/ScorecardTable';
 import { WagonWheelSVG } from '../../../components/match/WagonWheelSVG';
 import { PitchRadarSVG } from '../../../components/match/PitchRadarSVG';
 import { SyncService } from '../../../services/syncService';
+import { CanonicalMatchService } from '../../../services/canonicalMatchService';
 
 export default function MatchCentreScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -47,16 +48,27 @@ export default function MatchCentreScreen() {
           setSelectedInningsIndex(m.currentInningsIndex);
         }
       });
+      // Fetch fresh canonical projection from cloud backend
+      CanonicalMatchService.fetchCanonicalMatch(id).then((canonicalMatch) => {
+        if (canonicalMatch) {
+          setMatch(canonicalMatch);
+          setSelectedInningsIndex(canonicalMatch.currentInningsIndex);
+        }
+      });
     }
   }, [id, loadMatchById]);
 
   // Realtime subscription to live match revision increments
   useEffect(() => {
     if (!id) return;
-    const unsubscribe = SyncService.subscribeToMatchRevisions(id, (_newRev) => {
-      loadMatchById(id).then((m) => {
-        if (m) setMatch(m);
-      });
+    const unsubscribe = SyncService.subscribeToMatchRevisions(id, async (_newRev) => {
+      const canonicalMatch = await CanonicalMatchService.fetchCanonicalMatch(id);
+      if (canonicalMatch) {
+        setMatch(canonicalMatch);
+      } else {
+        const localMatch = await loadMatchById(id);
+        if (localMatch) setMatch(localMatch);
+      }
     });
     return () => {
       unsubscribe();

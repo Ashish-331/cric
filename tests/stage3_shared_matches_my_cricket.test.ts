@@ -237,17 +237,22 @@ test('STAGE3-004: Offline scoring queue, delay detection, and idempotent outbox 
   assert.equal(matchPending.length, 2);
 
   // Network reconnects -> SyncService.processOutbox
-  const syncResult1 = await SyncService.processOutbox(repo);
-  assert.equal(syncResult1.syncedCount >= 2, true);
-  assert.equal(syncResult1.failedCount, 0);
+  SyncService.setTransmitter(async () => ({ accepted: true }));
+  try {
+    const syncResult1 = await SyncService.processOutbox(repo);
+    assert.equal(syncResult1.syncedCount >= 2, true);
+    assert.equal(syncResult1.failedCount, 0);
 
-  // Verify outbox is now empty for this match
-  const afterSyncPending = await repo.getPendingSyncOutbox();
-  const remaining = afterSyncPending.filter((e) => e.matchId === match.id);
-  assert.equal(remaining.length, 0, 'All events must be marked synced');
+    // Verify outbox is now empty for this match
+    const afterSyncPending = await repo.getPendingSyncOutbox();
+    const remaining = afterSyncPending.filter((e) => e.matchId === match.id);
+    assert.equal(remaining.length, 0, 'All events must be marked synced');
 
-  // Subsequent sync invocation must be completely idempotent (0 events processed)
-  const syncResult2 = await SyncService.processOutbox(repo);
-  const remainingAttempt = syncResult2.syncedCount;
-  assert.equal(remainingAttempt, 0, 'Idempotent replay must not re-transmit synced deliveries');
+    // Subsequent sync invocation must be completely idempotent (0 events processed)
+    const syncResult2 = await SyncService.processOutbox(repo);
+    const remainingAttempt = syncResult2.syncedCount;
+    assert.equal(remainingAttempt, 0, 'Idempotent replay must not re-transmit synced deliveries');
+  } finally {
+    SyncService.setTransmitter(null);
+  }
 });

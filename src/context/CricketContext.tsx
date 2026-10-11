@@ -21,6 +21,7 @@ import {
   TournamentSquadMember,
   MatchApprovalStatus,
   MatchResultDetails,
+  InningsAction,
 } from '../types/cricket';
 import {
   CricketEngine,
@@ -29,6 +30,9 @@ import {
 } from '../engine/cricketEngine';
 import { StatsRollupEngine } from '../engine/statsRollupEngine';
 import { StorageService, UserProfile, PRESET_USERS } from '../storage/storageService';
+import { matchRepository } from '../repositories';
+import { SyncService } from '../services/syncService';
+import { getDatabase } from '../repositories/sqlite/database';
 
 interface CreateMatchParams {
   title: string;
@@ -207,8 +211,28 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const initializeData = async () => {
       try {
         setLoading(true);
-        const [loadedMatches, loadedTeams, profile, requests, loadedTournaments, loadedEntries] = await Promise.all([
-          StorageService.getMatches(),
+        // Ensure SQLite DB and migration are run
+        try {
+          await getDatabase();
+        } catch (dbErr) {
+          console.warn('SQLite init warning:', dbErr);
+        }
+
+        let initialMatches: Match[] = [];
+        try {
+          initialMatches = await matchRepository.listMatches();
+        } catch {
+          // fallback if SQLite not ready
+        }
+
+        if (initialMatches.length === 0) {
+          initialMatches = await StorageService.getMatches();
+          for (const m of initialMatches) {
+            await matchRepository.saveMatch(m).catch(() => {});
+          }
+        }
+
+        const [loadedTeams, profile, requests, loadedTournaments, loadedEntries] = await Promise.all([
           StorageService.getTeams(),
           StorageService.getUserProfile(),
           StorageService.getJoinRequests(),
@@ -217,9 +241,9 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ]);
 
         // Rollup stats initially from completed matches
-        const rolledTeams = await applyCareerStatsRollup(loadedMatches, loadedTeams);
+        const rolledTeams = await applyCareerStatsRollup(initialMatches, loadedTeams);
 
-        setMatches(loadedMatches);
+        setMatches(initialMatches);
         setTeams(rolledTeams);
         setUserProfile(profile);
         setJoinRequests(requests);
@@ -235,16 +259,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [applyCareerStatsRollup]);
 
   const refreshMatches = useCallback(async () => {
-    const loadedMatches = await StorageService.getMatches();
+    let loadedMatches = await matchRepository.listMatches();
+    if (loadedMatches.length === 0) {
+      loadedMatches = await StorageService.getMatches();
+    }
     setMatches(loadedMatches);
   }, []);
 
   const loadMatchById = useCallback(async (id: string): Promise<Match | undefined> => {
-    const match = await StorageService.getMatchById(id);
+    let match: Match | null | undefined = await matchRepository.getById(id);
+    if (!match) {
+      match = await StorageService.getMatchById(id);
+    }
     if (match) {
       updateActiveMatch(match);
     }
-    return match;
+    return match || undefined;
   }, [updateActiveMatch]);
 
   // Switch User Profile (e.g. Captain, Player, Organizer)
@@ -386,6 +416,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdated: Date.now(),
       };
 
+      await matchRepository.saveMatch(updatedMatch);
       await StorageService.saveMatch(updatedMatch);
       const allMatches = await StorageService.getMatches();
       setMatches(allMatches);
@@ -413,6 +444,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdated: Date.now(),
       };
 
+      await matchRepository.saveMatch(updatedMatch);
       await StorageService.saveMatch(updatedMatch);
       const allMatches = await StorageService.getMatches();
       setMatches(allMatches);
@@ -555,10 +587,36 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
-        // Persist to storage BEFORE updating in-memory active match
+        // Construct InningsAction for immutable ledger and sync outbox
+        const deliveryAction: InningsAction = {
+          type: 'DELIVERY',
+          delivery: newDelivery,
+        };
+
+        // Persist atomically to SQLite repository (ledger + outbox + projection) BEFORE updating in-memory active match
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            deliveryAction,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch,
+            deliveryId
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
+        }
+
+        // Also mirror to StorageService for fallback
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+
+        // Background outbox sync (never blocks local responsiveness)
+        SyncService.processOutbox(matchRepository).catch((err) => {
+          console.warn('Background outbox sync notice:', err.message);
+        });
 
         if (matchStatus === 'completed') {
           const allMatches = await StorageService.getMatches();
@@ -602,9 +660,29 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        const action: InningsAction = {
+          type: 'RETIRE_BATTER',
+          playerId,
+          dismissalType,
+          timestamp: Date.now(),
+        };
+
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -637,9 +715,29 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        const action: InningsAction = {
+          type: 'RETURN_BATTER',
+          playerId,
+          slot,
+          timestamp: Date.now(),
+        };
+
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -687,11 +785,29 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         revision: (currentMatch.revision || 0) + 1,
       };
 
-      await StorageService.saveMatch(updatedMatch);
-      updateActiveMatch(updatedMatch);
-      await refreshMatches();
-    });
-  }, [enqueueMatchMutation, refreshMatches, updateActiveMatch]);
+      const action: InningsAction = {
+        type: 'UNDO',
+        timestamp: Date.now(),
+      };
+
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
+      });
+    }, [enqueueMatchMutation, refreshMatches, updateActiveMatch]);
 
   const selectBowler = useCallback(
     async (bowlerId: string) => {
@@ -702,12 +818,14 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const currentInnings = currentMatch.innings[innIndex];
         if (!currentInnings) return;
 
-        const actions = [...(currentInnings.actions || [])];
-        actions.push({
+        const action: InningsAction = {
           type: 'SELECT_BOWLER',
           bowlerId,
           timestamp: Date.now(),
-        });
+        };
+
+        const actions = [...(currentInnings.actions || [])];
+        actions.push(action);
 
         const updatedInnings: Innings = {
           ...currentInnings,
@@ -724,9 +842,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -761,13 +892,15 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
         }
 
-        const actions = [...(currentInnings.actions || [])];
-        actions.push({
+        const action: InningsAction = {
           type: 'SELECT_BATTER',
           playerId: strikerId,
           slot: 'striker',
           timestamp: Date.now(),
-        });
+        };
+
+        const actions = [...(currentInnings.actions || [])];
+        actions.push(action);
 
         const updatedInnings: Innings = {
           ...currentInnings,
@@ -790,9 +923,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -827,13 +973,15 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
         }
 
-        const actions = [...(currentInnings.actions || [])];
-        actions.push({
+        const action: InningsAction = {
           type: 'SELECT_BATTER',
           playerId: nonStrikerId,
           slot: 'nonStriker',
           timestamp: Date.now(),
-        });
+        };
+
+        const actions = [...(currentInnings.actions || [])];
+        actions.push(action);
 
         const updatedInnings: Innings = {
           ...currentInnings,
@@ -856,9 +1004,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -873,11 +1034,13 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentInnings = currentMatch.innings[innIndex];
       if (!currentInnings) return;
 
-      const actions = [...(currentInnings.actions || [])];
-      actions.push({
+      const action: InningsAction = {
         type: 'SWAP_ENDS',
         timestamp: Date.now(),
-      });
+      };
+
+      const actions = [...(currentInnings.actions || [])];
+      actions.push(action);
 
       const temp = currentInnings.currentStrikerId;
       const updatedInnings: Innings = {
@@ -897,9 +1060,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         revision: (currentMatch.revision || 0) + 1,
       };
 
+      try {
+        await matchRepository.appendAction(
+          currentMatch.id,
+          action,
+          currentMatch.revision || 0,
+          1,
+          updatedMatch
+        );
+      } catch (sqliteErr: any) {
+        console.warn('SQLite repository append notice:', sqliteErr.message);
+      }
+
       await StorageService.saveMatch(updatedMatch);
       updateActiveMatch(updatedMatch);
       await refreshMatches();
+      SyncService.processOutbox(matchRepository).catch(() => {});
     });
   }, [enqueueMatchMutation, refreshMatches, updateActiveMatch]);
 
@@ -934,9 +1110,27 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           revision: (currentMatch.revision || 0) + 1,
         };
 
+        const action: InningsAction = {
+          type: 'END_INNINGS',
+          timestamp: Date.now(),
+        };
+
+        try {
+          await matchRepository.appendAction(
+            currentMatch.id,
+            action,
+            currentMatch.revision || 0,
+            1,
+            updatedMatch
+          );
+        } catch (sqliteErr: any) {
+          console.warn('SQLite repository append notice:', sqliteErr.message);
+        }
+
         await StorageService.saveMatch(updatedMatch);
         updateActiveMatch(updatedMatch);
         await refreshMatches();
+        SyncService.processOutbox(matchRepository).catch(() => {});
       });
     },
     [enqueueMatchMutation, refreshMatches, updateActiveMatch]
@@ -1019,6 +1213,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdated: Date.now(),
       };
 
+      await matchRepository.saveMatch(newMatch);
       await StorageService.saveMatch(newMatch);
       await refreshMatches();
       setActiveMatch(newMatch);
@@ -1049,6 +1244,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const importMatch = useCallback(
     async (jsonString: string): Promise<Match> => {
       const match = StorageService.importMatchJSON(jsonString);
+      await matchRepository.saveMatch(match);
       await StorageService.saveMatch(match);
       await refreshMatches();
       return match;
@@ -1058,6 +1254,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteMatch = useCallback(
     async (matchId: string) => {
+      await matchRepository.deleteMatch(matchId);
       await StorageService.deleteMatch(matchId);
       if (activeMatch?.id === matchId) {
         setActiveMatch(null);

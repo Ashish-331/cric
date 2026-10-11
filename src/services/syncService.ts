@@ -13,6 +13,23 @@ export interface SyncResult {
 
 export class SyncService {
   private static isSyncing = false;
+  private static customTransmitter: ((event: OutboxEvent) => Promise<{
+    accepted: boolean;
+    conflict?: boolean;
+    canonicalRevision?: number;
+    error?: string;
+  }>) | null = null;
+
+  static setTransmitter(
+    transmitter: ((event: OutboxEvent) => Promise<{
+      accepted: boolean;
+      conflict?: boolean;
+      canonicalRevision?: number;
+      error?: string;
+    }>) | null
+  ): void {
+    this.customTransmitter = transmitter;
+  }
 
   /**
    * Processes all pending actions in the local durable outbox.
@@ -44,7 +61,14 @@ export class SyncService {
       const pendingEvents = await matchRepo.getPendingSyncOutbox();
       result.processedCount = pendingEvents.length;
 
+      // Group per matchId so a conflict on match A does not starve match B
+      const blockedMatchIds = new Set<string>();
+
       for (const event of pendingEvents) {
+        if (blockedMatchIds.has(event.matchId)) {
+          continue;
+        }
+
         try {
           const outcome = await this.transmitAction(event);
 
@@ -53,14 +77,15 @@ export class SyncService {
             result.syncedCount += 1;
           } else if (outcome.conflict) {
             result.conflictsCount += 1;
+            blockedMatchIds.add(event.matchId);
             await matchRepo.markOutboxFailed(
               event.id,
-              `Revision conflict: canonical is ${outcome.canonicalRevision}`
+              `Revision conflict: canonical is ${outcome.canonicalRevision}`,
+              true
             );
-            // Break chain for this match to maintain sequential revision order
-            break;
           } else {
             result.failedCount += 1;
+            blockedMatchIds.add(event.matchId);
             await matchRepo.markOutboxFailed(event.id, outcome.error || 'Transmission rejected');
           }
         } catch (err: any) {
@@ -68,7 +93,7 @@ export class SyncService {
           result.failedCount += 1;
           result.errors.push(err.message || 'Network disconnected');
           await matchRepo.markOutboxFailed(event.id, err.message || 'Network failure');
-          // Offline: stop processing remaining queue
+          // Offline network loss halts outbox processing
           break;
         }
       }
@@ -81,52 +106,59 @@ export class SyncService {
 
   /**
    * Transmits a single scoring action to the canonical Edge Function.
+   * Fails closed: Never marks sync success without verified server acceptance.
    */
   private static async transmitAction(
     event: OutboxEvent
   ): Promise<{ accepted: boolean; conflict?: boolean; canonicalRevision?: number; error?: string }> {
+    if (this.customTransmitter) {
+      return this.customTransmitter(event);
+    }
+
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
 
-      // When running in full cloud mode with active token, invoke edge function
-      if (token) {
-        const response = await fetch(
-          `${process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321'}/functions/v1/commit-match-action`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              matchId: event.matchId,
-              expectedRevision: event.expectedRevision,
-              actionId: event.actionId,
-              authorityEpoch: event.authorityEpoch,
-              action: event.payload,
-            }),
-          }
-        );
-
-        if (response.status === 409) {
-          const conflictData = await response.json();
-          return {
-            accepted: false,
-            conflict: true,
-            canonicalRevision: conflictData.canonicalRevision,
-          };
-        }
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          return { accepted: false, error: errData.error || `HTTP ${response.status}` };
-        }
-
-        return { accepted: true };
+      // Fail closed: Never pretend synchronization happened without an authenticated session
+      if (!token) {
+        return {
+          accepted: false,
+          error: 'NO_SESSION: Outbox sync blocked awaiting authenticated session.',
+        };
       }
 
-      // Fallback: If running locally without deployed edge functions, simulate local acceptance
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321'}/functions/v1/commit-match-action`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            matchId: event.matchId,
+            expectedRevision: event.expectedRevision,
+            actionId: event.actionId,
+            authorityEpoch: event.authorityEpoch,
+            action: event.payload,
+          }),
+        }
+      );
+
+      if (response.status === 409) {
+        const conflictData = await response.json();
+        return {
+          accepted: false,
+          conflict: true,
+          canonicalRevision: conflictData.canonicalRevision,
+        };
+      }
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        return { accepted: false, error: errData.error || `HTTP ${response.status}` };
+      }
+
       return { accepted: true };
     } catch (err: any) {
       throw err;

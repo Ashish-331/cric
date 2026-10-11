@@ -21,7 +21,7 @@ export interface OutboxEvent {
   createdAt: number;
   syncedAt?: number;
   retryCount: number;
-  status: 'pending' | 'in_flight' | 'synced' | 'failed';
+  status: 'pending' | 'in_flight' | 'synced' | 'failed' | 'conflict';
   lastError?: string;
 }
 
@@ -42,11 +42,13 @@ export interface IMatchRepository {
     matchId: string,
     action: InningsAction,
     expectedRevision: number,
-    authorityEpoch: number
+    authorityEpoch: number,
+    nextMatchState?: Match,
+    actionId?: string
   ): Promise<{ revision: number; actionId: string }>;
   getPendingSyncOutbox(): Promise<OutboxEvent[]>;
   markOutboxSynced(eventIds: string[]): Promise<void>;
-  markOutboxFailed(eventId: string, error: string): Promise<void>;
+  markOutboxFailed(eventId: string, error: string, isPermanentConflict?: boolean): Promise<void>;
 }
 
 export interface IPlayerRepository {

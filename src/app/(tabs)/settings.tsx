@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { UserProfile } from '../../storage/storageService';
 import { Colors } from '../../utils/colors';
+import { AuthService } from '../../services/authService';
 
 export default function SettingsScreen() {
   const {
@@ -35,27 +36,35 @@ export default function SettingsScreen() {
     ? getPlayerById(userProfile.claimedPlayerId)
     : undefined;
 
-  const handleSendOtp = () => {
-    if (!phoneInput || phoneInput.length < 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number.');
+  const handleSendOtp = async () => {
+    const normalized = AuthService.normalizePhoneNumber(phoneInput);
+    if (!normalized || normalized.length < 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid mobile number with country code (e.g. +91 9876543210).');
       return;
     }
-    setOtpSent(true);
-    Alert.alert('Demo OTP Sent', 'Verification code has been sent. Use demo code: 123456');
+    try {
+      const res = await AuthService.requestOtp(normalized);
+      setOtpSent(true);
+      Alert.alert('OTP Sent', res.message || `Verification code sent to ${normalized}`);
+    } catch (err: any) {
+      Alert.alert('OTP Request Failed', err.message);
+    }
   };
 
   const handleVerifyOtp = async () => {
-    if (otpInput === '123456') {
+    const normalized = AuthService.normalizePhoneNumber(phoneInput);
+    try {
+      await AuthService.verifyOtp(normalized, otpInput.trim());
       await updateUserProfile({
-        phoneNumber: phoneInput,
+        phoneNumber: normalized,
         isGuest: false,
         isVerified: true,
       });
       setOtpSent(false);
       setOtpInput('');
-      Alert.alert('Verified!', 'Your mobile account is now verified. Guest records are linked.');
-    } else {
-      Alert.alert('Invalid Code', 'Please enter code 123456');
+      Alert.alert('Verified!', 'Your mobile account is now authenticated with an active session.');
+    } catch (err: any) {
+      Alert.alert('Verification Failed', err.message);
     }
   };
 
@@ -120,15 +129,25 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {userProfile?.claimedPlayerId && (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           <TouchableOpacity
-            style={styles.viewProfileBtn}
-            onPress={() => router.push(`/player/${userProfile.claimedPlayerId}`)}
+            style={[styles.viewProfileBtn, { flex: 1, marginTop: 0 }]}
+            onPress={() => router.push('/profile')}
           >
-            <MaterialCommunityIcons name="card-account-details-outline" size={16} color="#FFF" />
-            <Text style={styles.viewProfileBtnText}>View Full Career Profile & Stats</Text>
+            <Ionicons name="person" size={15} color="#FFF" />
+            <Text style={styles.viewProfileBtnText}>My Cricket Hub</Text>
           </TouchableOpacity>
-        )}
+
+          {userProfile?.claimedPlayerId && (
+            <TouchableOpacity
+              style={[styles.viewProfileBtn, { flex: 1, marginTop: 0, backgroundColor: '#0284C7' }]}
+              onPress={() => router.push(`/player/${userProfile.claimedPlayerId}`)}
+            >
+              <MaterialCommunityIcons name="card-account-details-outline" size={15} color="#FFF" />
+              <Text style={styles.viewProfileBtnText}>Career Figures</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* 2. Easy Persona / User Switcher */}
@@ -242,7 +261,7 @@ export default function SettingsScreen() {
 
         <View style={styles.healthRow}>
           <Text style={styles.healthLabel}>Storage Engine:</Text>
-          <Text style={styles.healthValue}>AsyncStorage (Persistent)</Text>
+          <Text style={styles.healthValue}>SQLite (WAL Mode & Durable Outbox)</Text>
         </View>
 
         <View style={styles.healthRow}>

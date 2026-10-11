@@ -20,6 +20,7 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'bowler' | 'batter'>('bowler');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | undefined>(undefined);
+  const [provenanceFilter, setProvenanceFilter] = useState<'all' | 'observed' | 'estimated'>('all');
   const [inspectedBall, setInspectedBall] = useState<Delivery | null>(null);
 
   // Proportional 22-yard pitch geometry
@@ -42,6 +43,12 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
     return 'Player';
   };
 
+  // Determine batter stance for visual field orientation (UI-001)
+  const selectedBatter = viewMode === 'batter' && selectedPlayerId
+    ? players.find((p) => p.id === selectedPlayerId)
+    : undefined;
+  const isLeftHander = selectedBatter?.battingHand === 'left';
+
   // Filter deliveries based on active mode
   let filteredBalls = (deliveries || []).filter((d) => d.extraType !== 'penalty');
 
@@ -54,6 +61,13 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
     if (selectedPlayerId) {
       filteredBalls = filteredBalls.filter((d) => d.strikerId === selectedPlayerId);
     }
+  }
+
+  // Filter by provenance (DATA-002)
+  if (provenanceFilter === 'observed') {
+    filteredBalls = filteredBalls.filter((d) => d.pitchProvenance === 'observed');
+  } else if (provenanceFilter === 'estimated') {
+    filteredBalls = filteredBalls.filter((d) => d.pitchProvenance === 'estimated' || !d.pitchProvenance);
   }
 
   // Length zones coordinates (from top bowling crease to bottom popping crease)
@@ -71,6 +85,7 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
           <Text style={styles.title}>22-Yard Pitch Radar</Text>
           <Text style={styles.subtitle}>
             {viewMode === 'bowler' ? 'Deliveries Bowled' : 'Deliveries Faced'} • {filteredBalls.length} Balls Plotted
+            {viewMode === 'batter' && selectedBatter ? ` (${selectedBatter.battingHand === 'left' ? 'LH Batter' : 'RH Batter'})` : ''}
           </Text>
         </View>
 
@@ -101,6 +116,33 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Provenance Filter Pills (DATA-002) */}
+      <View style={styles.provenanceRow}>
+        {(['all', 'observed', 'estimated'] as const).map((filter) => (
+          <TouchableOpacity
+            key={filter}
+            style={[
+              styles.provenanceChip,
+              provenanceFilter === filter && styles.provenanceChipActive,
+            ]}
+            onPress={() => setProvenanceFilter(filter)}
+          >
+            <Text
+              style={[
+                styles.provenanceChipText,
+                provenanceFilter === filter && styles.provenanceChipTextActive,
+              ]}
+            >
+              {filter === 'all'
+                ? 'All Deliveries'
+                : filter === 'observed'
+                ? '🎯 Observed'
+                : '✨ Estimated'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Player Filter Selector Scroll */}
@@ -273,15 +315,15 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
           <Circle cx={pitchX + 55} cy={pitchY + pitchH - 8} r={2.5} fill="#FFFFFF" />
           <Circle cx={pitchX + 60} cy={pitchY + pitchH - 8} r={2.5} fill="#FFFFFF" />
 
-          {/* Channel Header Indicators */}
-          <SvgText x={pitchX + 18} y={pitchY - 8} fill="#94A3B8" fontSize="8" textAnchor="middle">
-            OFF
+          {/* Channel Header Indicators (UI-001: Mirrored for LH batters) */}
+          <SvgText x={pitchX + 18} y={pitchY - 8} fill={isLeftHander ? '#F59E0B' : '#94A3B8'} fontSize="8" fontWeight={isLeftHander ? 'bold' : 'normal'} textAnchor="middle">
+            {isLeftHander ? 'LEG' : 'OFF'}
           </SvgText>
           <SvgText x={pitchX + 55} y={pitchY - 8} fill="#CBD5E1" fontSize="8" fontWeight="bold" textAnchor="middle">
             STUMPS
           </SvgText>
-          <SvgText x={pitchX + 92} y={pitchY - 8} fill="#94A3B8" fontSize="8" textAnchor="middle">
-            LEG
+          <SvgText x={pitchX + 92} y={pitchY - 8} fill={isLeftHander ? '#94A3B8' : '#F59E0B'} fontSize="8" fontWeight={!isLeftHander ? 'bold' : 'normal'} textAnchor="middle">
+            {isLeftHander ? 'OFF' : 'LEG'}
           </SvgText>
 
           {/* Delivery Dots - Plotted according to actual recorded or derived pitch mapping */}
@@ -331,6 +373,7 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
             else if (d.runsBat === 0 && d.extraType === 'none') fillColor = '#64748B'; // slate
 
             const isInspected = inspectedBall?.id === d.id;
+            const isEstimated = d.pitchProvenance === 'estimated' || (!d.pitchProvenance && !d.pitchCoord);
 
             return (
               <G key={d.id || i} onPress={() => setInspectedBall(d)}>
@@ -340,7 +383,8 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
                   r={isInspected ? 7 : 5}
                   fill={fillColor}
                   stroke={isInspected ? '#FFD700' : '#FFFFFF'}
-                  strokeWidth={isInspected ? 2.5 : 1}
+                  strokeWidth={isInspected ? 2.5 : isEstimated ? 1 : 1.5}
+                  strokeDasharray={isEstimated ? '2 2' : undefined}
                   opacity={0.92}
                 />
               </G>
@@ -349,7 +393,7 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
         </Svg>
       </View>
 
-      {/* Selected Ball Inspector Card */}
+      {/* Selected Ball Inspector Card (DATA-002: Provenance Tag) */}
       {inspectedBall && (
         <View style={styles.inspectorCard}>
           <View style={styles.inspectorRow}>
@@ -369,6 +413,18 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
                 {inspectedBall.pitchLength ? `Length: ${inspectedBall.pitchLength.replace('_', ' ')} • ` : ''}
                 {inspectedBall.pitchLine ? `Line: ${inspectedBall.pitchLine.replace('_', ' ')}` : ''}
               </Text>
+              <View style={styles.provenanceTagRow}>
+                <Text
+                  style={[
+                    styles.provenanceTagText,
+                    { color: inspectedBall.pitchProvenance === 'observed' ? '#00E676' : '#FFB300' },
+                  ]}
+                >
+                  {inspectedBall.pitchProvenance === 'observed'
+                    ? '🎯 PROVENANCE: OBSERVED (MANUAL TAP)'
+                    : '✨ PROVENANCE: ESTIMATED (AUTO-DERIVED FROM SHOT)'}
+                </Text>
+              </View>
             </View>
             <TouchableOpacity onPress={() => setInspectedBall(null)}>
               <Text style={styles.inspectorClose}>✕</Text>
@@ -398,6 +454,14 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: '#FF1744' }]} />
           <Text style={styles.legendText}>Wicket</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FFF' }]} />
+          <Text style={styles.legendText}>Observed</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#CBD5E1', borderStyle: 'dashed' }]} />
+          <Text style={styles.legendText}>Estimated</Text>
         </View>
       </View>
     </View>
@@ -540,5 +604,40 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 10,
     fontWeight: '600',
+  },
+  provenanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  provenanceChip: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  provenanceChipActive: {
+    backgroundColor: '#0F766E',
+    borderColor: '#14B8A6',
+  },
+  provenanceChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  provenanceChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  provenanceTagRow: {
+    marginTop: 4,
+  },
+  provenanceTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });

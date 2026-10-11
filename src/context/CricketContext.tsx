@@ -72,6 +72,8 @@ interface CricketContextType {
   setActiveMatch: (match: Match | null) => void;
   recordDelivery: (input: BallInput) => Promise<void>;
   undoDelivery: () => Promise<void>;
+  retireBatter: (playerId: string, dismissalType: 'retired_hurt' | 'retired_out') => Promise<void>;
+  returnBatter: (playerId: string, slot: 'striker' | 'nonStriker') => Promise<void>;
   selectBowler: (bowlerId: string) => Promise<void>;
   selectStriker: (strikerId: string) => Promise<void>;
   selectNonStriker: (nonStrikerId: string) => Promise<void>;
@@ -407,6 +409,8 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         runsBat: input.runsBat,
         runsExtra: input.runsExtra,
         extraType: input.extraType,
+        extrasDetail: input.extrasDetail,
+        physicalRunsRan: input.physicalRunsRan,
         isBoundary: input.isBoundary,
         isSix: input.isSix,
         isWicket: input.isWicket,
@@ -419,6 +423,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
           : undefined,
         commentary: input.commentary || '',
+        shotArea: input.shotArea,
+        pitchLength: input.pitchLength,
+        pitchLine: input.pitchLine,
+        pitchCoord: input.pitchCoord,
+        pitchProvenance: input.pitchProvenance || (input.pitchCoord ? 'observed' : undefined),
+        bowlingSide: input.bowlingSide,
         timestamp: Date.now(),
       };
 
@@ -473,22 +483,90 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [activeMatch, applyCareerStatsRollup, refreshMatches, teams]
   );
 
-  // Undo delivery
+  // Explicit non-delivery batter retirement
+  const retireBatter = useCallback(
+    async (playerId: string, dismissalType: 'retired_hurt' | 'retired_out') => {
+      if (!activeMatch) return;
+      const innIndex = activeMatch.currentInningsIndex;
+      const currentInnings = activeMatch.innings[innIndex];
+      if (!currentInnings) return;
+
+      const updatedInnings = CricketEngine.retireBatter(
+        currentInnings,
+        playerId,
+        dismissalType,
+        Date.now()
+      );
+
+      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
+      updatedInningsArray[innIndex] = updatedInnings;
+
+      const updatedMatch: Match = {
+        ...activeMatch,
+        innings: updatedInningsArray,
+        lastUpdated: Date.now(),
+      };
+
+      setActiveMatch(updatedMatch);
+      await StorageService.saveMatch(updatedMatch);
+      await refreshMatches();
+    },
+    [activeMatch, refreshMatches]
+  );
+
+  // Return batter to crease after retired hurt
+  const returnBatter = useCallback(
+    async (playerId: string, slot: 'striker' | 'nonStriker') => {
+      if (!activeMatch) return;
+      const innIndex = activeMatch.currentInningsIndex;
+      const currentInnings = activeMatch.innings[innIndex];
+      if (!currentInnings) return;
+
+      const updatedInnings = CricketEngine.returnBatter(
+        currentInnings,
+        playerId,
+        slot,
+        Date.now()
+      );
+
+      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
+      updatedInningsArray[innIndex] = updatedInnings;
+
+      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
+      setActiveMatch(updatedMatch);
+      await StorageService.saveMatch(updatedMatch);
+      await refreshMatches();
+    },
+    [activeMatch, refreshMatches]
+  );
+
+  // Undo delivery or last scoring action
   const undoDelivery = useCallback(async () => {
     if (!activeMatch) return;
     const innIndex = activeMatch.currentInningsIndex;
     const currentInnings = activeMatch.innings[innIndex];
-    if (!currentInnings || currentInnings.deliveries.length === 0) return;
+    if (!currentInnings) return;
 
-    const newDeliveries = currentInnings.deliveries.slice(0, -1);
-
-    // Replay pristine sequence
-    const replayedInnings = CricketEngine.replayInnings(
-      activeMatch.innings[innIndex]!,
-      newDeliveries,
-      activeMatch.rules,
-      activeMatch.targetRuns
-    );
+    let replayedInnings: Innings;
+    if (currentInnings.actions && currentInnings.actions.length > 0) {
+      const newActions = currentInnings.actions.slice(0, -1);
+      replayedInnings = CricketEngine.replayInnings(
+        activeMatch.innings[innIndex]!,
+        newActions,
+        activeMatch.rules,
+        activeMatch.targetRuns
+      );
+    } else if (currentInnings.deliveries && currentInnings.deliveries.length > 0) {
+      const newDeliveries = currentInnings.deliveries.slice(0, -1);
+      replayedInnings = CricketEngine.replayInnings(
+        activeMatch.innings[innIndex]!,
+        newDeliveries,
+        activeMatch.rules,
+        activeMatch.targetRuns
+      );
+    } else {
+      return;
+    }
 
     const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
     updatedInningsArray[innIndex] = replayedInnings;
@@ -513,11 +591,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentInnings = activeMatch.innings[innIndex];
       if (!currentInnings) return;
 
-      const updatedInnings: Innings = { ...currentInnings, currentBowlerId: bowlerId };
+      const actions = [...(currentInnings.actions || [])];
+      actions.push({
+        type: 'SELECT_BOWLER',
+        bowlerId,
+        timestamp: Date.now(),
+      });
+
+      const updatedInnings: Innings = {
+        ...currentInnings,
+        currentBowlerId: bowlerId,
+        actions,
+      };
       const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
       updatedInningsArray[innIndex] = updatedInnings;
 
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray };
+      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
       setActiveMatch(updatedMatch);
       await StorageService.saveMatch(updatedMatch);
     },
@@ -543,7 +632,21 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           isOut: false,
           battingOrder: Object.keys(updatedBatterStats).length + 1,
         };
+      } else {
+        updatedBatterStats[strikerId] = {
+          ...updatedBatterStats[strikerId],
+          isOut: false,
+          dismissalText: undefined,
+        };
       }
+
+      const actions = [...(currentInnings.actions || [])];
+      actions.push({
+        type: 'SELECT_BATTER',
+        playerId: strikerId,
+        slot: 'striker',
+        timestamp: Date.now(),
+      });
 
       const updatedInnings: Innings = {
         ...currentInnings,
@@ -554,11 +657,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           currentInnings.currentNonStrikerId === strikerId
             ? undefined
             : currentInnings.currentNonStrikerId,
+        actions,
       };
       const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
       updatedInningsArray[innIndex] = updatedInnings;
 
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray };
+      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
       setActiveMatch(updatedMatch);
       await StorageService.saveMatch(updatedMatch);
     },
@@ -584,7 +688,21 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           isOut: false,
           battingOrder: Object.keys(updatedBatterStats).length + 1,
         };
+      } else {
+        updatedBatterStats[nonStrikerId] = {
+          ...updatedBatterStats[nonStrikerId],
+          isOut: false,
+          dismissalText: undefined,
+        };
       }
+
+      const actions = [...(currentInnings.actions || [])];
+      actions.push({
+        type: 'SELECT_BATTER',
+        playerId: nonStrikerId,
+        slot: 'nonStriker',
+        timestamp: Date.now(),
+      });
 
       const updatedInnings: Innings = {
         ...currentInnings,
@@ -595,11 +713,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           currentInnings.currentStrikerId === nonStrikerId
             ? undefined
             : currentInnings.currentStrikerId,
+        actions,
       };
       const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
       updatedInningsArray[innIndex] = updatedInnings;
 
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray };
+      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
       setActiveMatch(updatedMatch);
       await StorageService.saveMatch(updatedMatch);
     },
@@ -613,17 +732,24 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const currentInnings = activeMatch.innings[innIndex];
     if (!currentInnings) return;
 
+    const actions = [...(currentInnings.actions || [])];
+    actions.push({
+      type: 'SWAP_ENDS',
+      timestamp: Date.now(),
+    });
+
     const temp = currentInnings.currentStrikerId;
     const updatedInnings: Innings = {
       ...currentInnings,
       currentStrikerId: currentInnings.currentNonStrikerId,
       currentNonStrikerId: temp,
+      actions,
     };
 
     const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
     updatedInningsArray[innIndex] = updatedInnings;
 
-    const updatedMatch = { ...activeMatch, innings: updatedInningsArray };
+    const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
     setActiveMatch(updatedMatch);
     await StorageService.saveMatch(updatedMatch);
   }, [activeMatch]);
@@ -966,6 +1092,8 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveMatch,
         recordDelivery,
         undoDelivery,
+        retireBatter,
+        returnBatter,
         selectBowler,
         selectStriker,
         selectNonStriker,

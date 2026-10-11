@@ -11,7 +11,38 @@ import type {
 } from '../types/cricket';
 import { DEFAULT_TEAMS, DEFAULT_JOIN_REQUESTS, createSampleMatch } from './defaultData';
 
-const MATCHES_STORAGE_KEY = '@cric_matches_v1';
+export type StorageErrorCode =
+  | 'WRITE_FAILED'
+  | 'READ_FAILED'
+  | 'QUOTA_EXCEEDED'
+  | 'PAYLOAD_CORRUPT'
+  | 'NOT_FOUND'
+  | 'MIGRATION_FAILED';
+
+export class StorageError extends Error {
+  public readonly code: StorageErrorCode;
+  public readonly key?: string;
+  public readonly causeError?: unknown;
+
+  constructor(
+    message: string,
+    code: StorageErrorCode,
+    key?: string,
+    causeError?: unknown
+  ) {
+    super(message);
+    this.name = 'StorageError';
+    this.code = code;
+    this.key = key;
+    this.causeError = causeError;
+    Object.setPrototypeOf(this, StorageError.prototype);
+  }
+}
+
+const MATCH_KEY_PREFIX = '@cric_match_';
+const MATCH_INDEX_KEY_V2 = '@cric_match_ids_v2';
+const LEGACY_MATCHES_KEY = '@cric_matches_v1';
+const LEGACY_BACKUP_KEY = '@cric_matches_v1_backup';
 const TEAMS_STORAGE_KEY = '@cric_teams_v1';
 const USER_PROFILE_KEY = '@cric_user_profile_v1';
 const JOIN_REQUESTS_KEY = '@cric_join_requests_v1';
@@ -31,7 +62,20 @@ export interface UserProfile {
   teamId?: string;
 }
 
+export const DEFAULT_GUEST_USER: UserProfile = {
+  id: 'user_guest',
+  name: 'Guest Scorer',
+  phoneNumber: '',
+  isGuest: true,
+  isVerified: false,
+  role: 'player',
+  playingRole: 'all-rounder',
+  battingHand: 'right',
+  bowlingStyle: 'fast-medium',
+};
+
 export const PRESET_USERS: UserProfile[] = [
+  DEFAULT_GUEST_USER,
   {
     id: 'user_rohit',
     name: 'Rohit Sharma (Captain)',
@@ -81,70 +125,177 @@ export const PRESET_USERS: UserProfile[] = [
     claimedPlayerId: 'p2_6',
     teamId: 'team_bangalore',
   },
-  {
-    id: 'user_guest',
-    name: 'Guest Player / Recruit',
-    phoneNumber: '+91 90000 00000',
-    isGuest: true,
-    isVerified: false,
-    role: 'player',
-    playingRole: 'all-rounder',
-    battingHand: 'right',
-    bowlingStyle: 'fast-medium',
-  },
 ];
 
 export class StorageService {
+  private static matchWriteQueues: Map<string, Promise<void>> = new Map();
+
+  static validateMatchPayload(match: unknown): Match {
+    if (!match || typeof match !== 'object') {
+      throw new StorageError('Match payload is null or not an object', 'PAYLOAD_CORRUPT');
+    }
+    const m = match as Match;
+    if (!m.id || typeof m.id !== 'string') {
+      throw new StorageError('Match missing required valid id', 'PAYLOAD_CORRUPT');
+    }
+    if (!m.innings || !Array.isArray(m.innings) || !m.innings[0]) {
+      throw new StorageError('Match missing required innings array', 'PAYLOAD_CORRUPT');
+    }
+    return m;
+  }
+
+  static async migrateLegacyMatchesIfNeeded(): Promise<void> {
+    try {
+      const v2IndexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
+      if (v2IndexRaw !== null) {
+        return;
+      }
+
+      const legacyRaw = await AsyncStorage.getItem(LEGACY_MATCHES_KEY);
+      if (!legacyRaw) {
+        await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify([]));
+        return;
+      }
+
+      const legacyMatches = JSON.parse(legacyRaw) as Match[];
+      if (Array.isArray(legacyMatches) && legacyMatches.length > 0) {
+        const pairs: [string, string][] = [];
+        const index: string[] = [];
+
+        for (const m of legacyMatches) {
+          if (m && m.id) {
+            pairs.push([`${MATCH_KEY_PREFIX}${m.id}`, JSON.stringify(m)]);
+            index.push(m.id);
+          }
+        }
+
+        await AsyncStorage.multiSet(pairs);
+        await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify(index));
+
+        const verifyPairs = await AsyncStorage.multiGet(pairs.map(([k]) => k));
+        const allVerified = verifyPairs.every(([_, v]) => v !== null);
+        if (!allVerified) {
+          throw new StorageError('Verification failed during legacy match migration', 'MIGRATION_FAILED');
+        }
+
+        await AsyncStorage.setItem(LEGACY_BACKUP_KEY, legacyRaw);
+        await AsyncStorage.removeItem(LEGACY_MATCHES_KEY);
+      } else {
+        await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify([]));
+      }
+    } catch (err: any) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError(`Migration failed: ${err.message}`, 'MIGRATION_FAILED', LEGACY_MATCHES_KEY, err);
+    }
+  }
+
   // Matches
   static async getMatches(): Promise<Match[]> {
+    await StorageService.migrateLegacyMatchesIfNeeded();
     try {
-      const data = await AsyncStorage.getItem(MATCHES_STORAGE_KEY);
-      if (!data) {
-        const initial = [createSampleMatch()];
-        await AsyncStorage.setItem(MATCHES_STORAGE_KEY, JSON.stringify(initial));
-        return initial;
+      const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
+      const index: string[] = indexRaw ? JSON.parse(indexRaw) : [];
+      if (index.length === 0) {
+        const sample = createSampleMatch();
+        await StorageService.saveMatch(sample);
+        return [sample];
       }
-      return JSON.parse(data);
-    } catch (err) {
-      console.error('Failed to load matches from AsyncStorage', err);
-      return [createSampleMatch()];
+
+      const keys = index.map((id) => `${MATCH_KEY_PREFIX}${id}`);
+      const pairs = await AsyncStorage.multiGet(keys);
+      const matches: Match[] = [];
+      for (const [_, val] of pairs) {
+        if (val) {
+          try {
+            matches.push(JSON.parse(val));
+          } catch {
+            // Heal/skip corrupted single match entry without failing full suite
+          }
+        }
+      }
+      return matches;
+    } catch (err: any) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError(`Failed to load matches: ${err.message}`, 'READ_FAILED', MATCH_INDEX_KEY_V2, err);
     }
   }
 
   static async saveMatches(matches: Match[]): Promise<void> {
-    try {
-      await AsyncStorage.setItem(MATCHES_STORAGE_KEY, JSON.stringify(matches));
-    } catch (err) {
-      console.error('Failed to persist matches to AsyncStorage', err);
+    for (const match of matches) {
+      await StorageService.saveMatch(match);
     }
   }
 
   static async getMatchById(id: string): Promise<Match | undefined> {
-    const matches = await StorageService.getMatches();
-    return matches.find((m) => m.id === id);
+    await StorageService.migrateLegacyMatchesIfNeeded();
+    const matchKey = `${MATCH_KEY_PREFIX}${id}`;
+    try {
+      const raw = await AsyncStorage.getItem(matchKey);
+      if (!raw) return undefined;
+      return JSON.parse(raw) as Match;
+    } catch (err: any) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError(`Failed to read match ${id}: ${err.message}`, 'READ_FAILED', matchKey, err);
+    }
   }
 
   static async saveMatch(match: Match): Promise<void> {
-    const matches = await StorageService.getMatches();
-    const index = matches.findIndex((m) => m.id === match.id);
-    const updated = [...matches];
-    const withTimestamp: Match = {
+    StorageService.validateMatchPayload(match);
+    await StorageService.migrateLegacyMatchesIfNeeded();
+
+    const matchKey = `${MATCH_KEY_PREFIX}${match.id}`;
+    const serialized = JSON.stringify({
       ...match,
       lastUpdated: Date.now(),
-    };
+    });
 
-    if (index >= 0) {
-      updated[index] = withTimestamp;
-    } else {
-      updated.unshift(withTimestamp);
-    }
-    await StorageService.saveMatches(updated);
+    const prevQueue = StorageService.matchWriteQueues.get(match.id) || Promise.resolve();
+    const writeOp = prevQueue.then(async () => {
+      try {
+        await AsyncStorage.setItem(matchKey, serialized);
+        const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
+        const index: string[] = indexRaw ? JSON.parse(indexRaw) : [];
+        if (!index.includes(match.id)) {
+          index.unshift(match.id);
+          await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify(index));
+        }
+      } catch (err: any) {
+        throw new StorageError(
+          `Failed to persist match ${match.id}: ${err.message}`,
+          'WRITE_FAILED',
+          matchKey,
+          err
+        );
+      }
+    });
+
+    StorageService.matchWriteQueues.set(
+      match.id,
+      writeOp.catch(() => {})
+    );
+
+    await writeOp;
   }
 
   static async deleteMatch(id: string): Promise<void> {
-    const matches = await StorageService.getMatches();
-    const filtered = matches.filter((m) => m.id !== id);
-    await StorageService.saveMatches(filtered);
+    await StorageService.migrateLegacyMatchesIfNeeded();
+    const matchKey = `${MATCH_KEY_PREFIX}${id}`;
+    try {
+      await AsyncStorage.removeItem(matchKey);
+      const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
+      if (indexRaw) {
+        const index: string[] = JSON.parse(indexRaw);
+        const filtered = index.filter((item) => item !== id);
+        await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify(filtered));
+      }
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to delete match ${id}: ${err.message}`,
+        'WRITE_FAILED',
+        matchKey,
+        err
+      );
+    }
   }
 
   // Teams
@@ -156,17 +307,16 @@ export class StorageService {
         return DEFAULT_TEAMS;
       }
       return JSON.parse(data);
-    } catch (err) {
-      console.error('Failed to load teams from AsyncStorage', err);
-      return DEFAULT_TEAMS;
+    } catch (err: any) {
+      throw new StorageError(`Failed to load teams: ${err.message}`, 'READ_FAILED', TEAMS_STORAGE_KEY, err);
     }
   }
 
   static async saveTeams(teams: Team[]): Promise<void> {
     try {
       await AsyncStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(teams));
-    } catch (err) {
-      console.error('Failed to persist teams to AsyncStorage', err);
+    } catch (err: any) {
+      throw new StorageError(`Failed to persist teams: ${err.message}`, 'WRITE_FAILED', TEAMS_STORAGE_KEY, err);
     }
   }
 
@@ -336,32 +486,35 @@ export class StorageService {
     try {
       const data = await AsyncStorage.getItem(USER_PROFILE_KEY);
       if (!data) {
-        const defaultUser = PRESET_USERS[0]; // Rohit Sharma by default
-        await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(defaultUser));
-        return defaultUser;
+        await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(DEFAULT_GUEST_USER));
+        return DEFAULT_GUEST_USER;
       }
       const parsed = JSON.parse(data);
       if (!parsed || !parsed.role) {
-        const defaultUser = PRESET_USERS[0];
         const healed: UserProfile = {
-          ...defaultUser,
+          ...DEFAULT_GUEST_USER,
           ...parsed,
-          role: parsed?.role || defaultUser.role,
+          role: parsed?.role || DEFAULT_GUEST_USER.role,
         };
         await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(healed));
         return healed;
       }
       return parsed;
     } catch {
-      return PRESET_USERS[0];
+      return DEFAULT_GUEST_USER;
     }
   }
 
   static async saveUserProfile(profile: UserProfile): Promise<void> {
     try {
       await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-    } catch (err) {
-      console.error('Failed to save profile', err);
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to save profile: ${err.message}`,
+        'WRITE_FAILED',
+        USER_PROFILE_KEY,
+        err
+      );
     }
   }
 
@@ -373,7 +526,7 @@ export class StorageService {
   static importMatchJSON(jsonString: string): Match {
     const parsed = JSON.parse(jsonString);
     if (!parsed.id || !parsed.team1 || !parsed.team2 || !parsed.innings) {
-      throw new Error('Invalid match backup format');
+      throw new StorageError('Invalid match backup format', 'PAYLOAD_CORRUPT');
     }
     return parsed as Match;
   }
@@ -384,8 +537,13 @@ export class StorageService {
       const data = await AsyncStorage.getItem(TOURNAMENTS_STORAGE_KEY);
       if (!data) return [];
       return JSON.parse(data);
-    } catch {
-      return [];
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to load tournaments: ${err.message}`,
+        'READ_FAILED',
+        TOURNAMENTS_STORAGE_KEY,
+        err
+      );
     }
   }
 
@@ -399,8 +557,13 @@ export class StorageService {
         all.unshift(tournament);
       }
       await AsyncStorage.setItem(TOURNAMENTS_STORAGE_KEY, JSON.stringify(all));
-    } catch (err) {
-      console.error('Failed to save tournament', err);
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to save tournament: ${err.message}`,
+        'WRITE_FAILED',
+        TOURNAMENTS_STORAGE_KEY,
+        err
+      );
     }
   }
 
@@ -410,18 +573,46 @@ export class StorageService {
   }
 
   static async deleteTournament(id: string): Promise<void> {
-    const all = await StorageService.getTournaments();
-    const filtered = all.filter((t) => t.id !== id);
-    await AsyncStorage.setItem(TOURNAMENTS_STORAGE_KEY, JSON.stringify(filtered));
+    try {
+      const all = await StorageService.getTournaments();
+      const filtered = all.filter((t) => t.id !== id);
+      await AsyncStorage.setItem(TOURNAMENTS_STORAGE_KEY, JSON.stringify(filtered));
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to delete tournament: ${err.message}`,
+        'WRITE_FAILED',
+        TOURNAMENTS_STORAGE_KEY,
+        err
+      );
+    }
   }
 
-  // Ghost Player Claiming
-  static normalizePhone(phone?: string): string {
+  // Ghost Player Claiming & Phone Normalization
+  /**
+   * Normalizes a phone number to standard E.164 representation.
+   * Preserves explicit country codes (+91, +1, +44, etc.).
+   * Prevents unsafe suffix collisions across country codes (AUTH-002).
+   */
+  static normalizePhone(phone?: string, defaultCountryCode: string = '+91'): string {
     if (!phone) return '';
-    const digitsOnly = phone.replace(/\D/g, '');
-    if (digitsOnly.length >= 10) {
-      return digitsOnly.slice(-10);
+    const trimmed = phone.trim();
+    if (!trimmed) return '';
+
+    if (trimmed.startsWith('+')) {
+      const digits = trimmed.replace(/\D/g, '');
+      return `+${digits}`;
     }
+
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length === 10) {
+      const cc = defaultCountryCode.startsWith('+') ? defaultCountryCode : `+${defaultCountryCode}`;
+      return `${cc}${digitsOnly}`;
+    }
+
+    if (digitsOnly.length > 10) {
+      return `+${digitsOnly}`;
+    }
+
     return digitsOnly;
   }
 

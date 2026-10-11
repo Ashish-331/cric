@@ -135,6 +135,14 @@ export interface JoinRequest {
   requestedAt: number;
 }
 
+export interface DeliveryExtrasDetail {
+  noBall?: number;
+  wide?: number;
+  bye?: number;
+  legBye?: number;
+  penalty?: number;
+}
+
 export interface WicketDetails {
   dismissalType: DismissalType;
   playerDismissedId: string;
@@ -155,6 +163,8 @@ export interface Delivery {
   runsBat: number;
   runsExtra: number;
   extraType: ExtraType;
+  extrasDetail?: DeliveryExtrasDetail;
+  physicalRunsRan?: number; // Exact runs physically run between wickets
   isBoundary: boolean;
   isSix: boolean;
   isWicket: boolean;
@@ -167,7 +177,18 @@ export interface Delivery {
   pitchLength?: PitchLength;
   pitchLine?: PitchLine;
   pitchCoord?: PitchCoordinate;
+  pitchProvenance?: PitchProvenance;
 }
+
+export type PitchProvenance = 'observed' | 'estimated' | 'unknown';
+
+export type InningsAction =
+  | { type: 'DELIVERY'; delivery: Delivery }
+  | { type: 'RETIRE_BATTER'; playerId: string; dismissalType: 'retired_hurt' | 'retired_out'; timestamp: number }
+  | { type: 'RETURN_BATTER'; playerId: string; slot: 'striker' | 'nonStriker'; timestamp: number }
+  | { type: 'SELECT_BOWLER'; bowlerId: string; timestamp: number }
+  | { type: 'SELECT_BATTER'; slot: 'striker' | 'nonStriker'; playerId: string; timestamp: number }
+  | { type: 'SWAP_ENDS'; timestamp: number };
 
 export interface BatterStats {
   playerId: string;
@@ -222,9 +243,15 @@ export interface Innings {
   oversFormatted: string; // e.g. "4.2"
   extras: InningsExtras;
   deliveries: Delivery[];
+  actions?: InningsAction[];
   batterStats: Record<string, BatterStats>;
   bowlerStats: Record<string, BowlerStats>;
   fallOfWickets: FallOfWicket[];
+  // Initial line-up origin (immutable replay origin)
+  initialStrikerId?: string;
+  initialNonStrikerId?: string;
+  initialBowlerId?: string;
+  // Current active crease positions
   currentStrikerId?: string;
   currentNonStrikerId?: string;
   currentBowlerId?: string;

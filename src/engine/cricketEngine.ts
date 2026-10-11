@@ -3,6 +3,8 @@ import type {
   DismissalType,
   ExtraType,
   Innings,
+  InningsAction,
+  DeliveryExtrasDetail,
   Match,
   MatchRules,
   BatterStats,
@@ -14,12 +16,70 @@ import type {
   PitchLength,
   PitchLine,
   PitchCoordinate,
+  PitchProvenance,
+  BattingHand,
 } from '../types/cricket';
+
+export const BOWLER_CREDITED_DISMISSALS: readonly DismissalType[] = [
+  'bowled',
+  'caught',
+  'caught_and_bowled',
+  'lbw',
+  'stumped',
+  'hit_wicket',
+];
+
+export function isBowlerCreditedDismissal(type: DismissalType): boolean {
+  return BOWLER_CREDITED_DISMISSALS.includes(type);
+}
+
+export function validateDismissalLegality(
+  type: DismissalType,
+  context: { isNoBall: boolean; isWide: boolean; isFreeHit: boolean }
+): { isLegal: boolean; reason?: string } {
+  if (context.isNoBall || context.isFreeHit) {
+    const prohibitedOnNoBall: DismissalType[] = [
+      'bowled',
+      'caught',
+      'caught_and_bowled',
+      'lbw',
+      'stumped',
+      'hit_wicket',
+    ];
+    if (prohibitedOnNoBall.includes(type)) {
+      return {
+        isLegal: false,
+        reason: `A batter cannot be out ${type.replace(/_/g, ' ')} on a ${
+          context.isNoBall ? 'No-Ball' : 'Free Hit'
+        } (MCC Law 21.19 / Playing Conditions)`,
+      };
+    }
+  }
+
+  if (context.isWide) {
+    const prohibitedOnWide: DismissalType[] = [
+      'bowled',
+      'caught',
+      'caught_and_bowled',
+      'lbw',
+    ];
+    if (prohibitedOnWide.includes(type)) {
+      return {
+        isLegal: false,
+        reason: `A batter cannot be out ${type.replace(/_/g, ' ')} on a Wide ball (MCC Law 22.17)`,
+      };
+    }
+  }
+
+  return { isLegal: true };
+}
 
 export interface BallInput {
   runsBat: number;
   extraType: ExtraType;
   runsExtra: number;
+  extrasDetail?: DeliveryExtrasDetail;
+  physicalRunsRan?: number;
   isBoundary: boolean;
   isSix: boolean;
   isWicket: boolean;
@@ -32,6 +92,7 @@ export interface BallInput {
   pitchLength?: PitchLength;
   pitchLine?: PitchLine;
   pitchCoord?: PitchCoordinate;
+  pitchProvenance?: PitchProvenance;
 }
 
 export interface CommentaryContext {
@@ -58,107 +119,137 @@ export function derivePitchMapping(
   shotArea?: ShotSector,
   runsBat: number = 0,
   isBoundary: boolean = false,
-  isSix: boolean = false
+  isSix: boolean = false,
+  battingHand: BattingHand = 'right'
 ): {
   pitchLength: PitchLength;
   pitchLine: PitchLine;
   pitchCoord: PitchCoordinate;
 } {
+  let result: {
+    pitchLength: PitchLength;
+    pitchLine: PitchLine;
+    pitchCoord: PitchCoordinate;
+  };
+
   switch (shotArea) {
     case 'Point':
     case 'Third Man':
       // Cut / upper cut / edge: short or good length, outside off
-      return {
+      result = {
         pitchLength: 'short',
         pitchLine: 'outside_off',
         pitchCoord: { x: 30, y: 35 },
       };
+      break;
 
     case 'Cover':
       // Cover drive / lofted cover drive: full length, outside off
-      return {
+      result = {
         pitchLength: 'full',
         pitchLine: 'outside_off',
         pitchCoord: { x: 35, y: 76 },
       };
+      break;
 
     case 'Mid-Off':
       // Off drive: full / good length, outside off
-      return {
+      result = {
         pitchLength: 'full',
         pitchLine: 'outside_off',
         pitchCoord: { x: 42, y: 78 },
       };
+      break;
 
     case 'Long-Off':
       // Lofted straight drive over mid-off: full / slot ball outside off
-      return {
+      result = {
         pitchLength: 'full',
         pitchLine: 'outside_off',
         pitchCoord: { x: 40, y: 82 },
       };
+      break;
 
     case 'Long-On':
       // Lofted drive down the ground: full / slot ball on middle-off
-      return {
+      result = {
         pitchLength: 'full',
         pitchLine: 'on_stumps',
         pitchCoord: { x: 50, y: 80 },
       };
+      break;
 
     case 'Mid-Wicket':
       // Pull / flick / slog: short or good length on middle/leg
-      return {
+      result = {
         pitchLength: runsBat >= 4 ? 'short' : 'good_length',
         pitchLine: 'on_stumps',
         pitchCoord: { x: 50, y: runsBat >= 4 ? 38 : 58 },
       };
+      break;
 
     case 'Square Leg':
       // Pull / hook / glancing off hip: short or back of a length on leg
-      return {
+      result = {
         pitchLength: 'short',
         pitchLine: 'down_leg',
         pitchCoord: { x: 65, y: 34 },
       };
+      break;
 
     case 'Fine Leg':
       // Glance / sweep / hook behind square: full on pads or short down leg
-      return {
+      result = {
         pitchLength: runsBat >= 4 ? 'full' : 'good_length',
         pitchLine: 'down_leg',
         pitchCoord: { x: 68, y: runsBat >= 4 ? 80 : 60 },
       };
+      break;
 
     case 'Behind Keeper':
       // Scoop / ramp: yorker or very full on stumps
-      return {
+      result = {
         pitchLength: 'yorker',
         pitchLine: 'on_stumps',
         pitchCoord: { x: 50, y: 92 },
       };
+      break;
 
     default:
       if (isSix) {
-        return {
+        result = {
           pitchLength: 'full',
           pitchLine: 'on_stumps',
           pitchCoord: { x: 50, y: 80 },
         };
-      }
-      if (isBoundary) {
-        return {
+      } else if (isBoundary) {
+        result = {
           pitchLength: 'full',
           pitchLine: 'outside_off',
           pitchCoord: { x: 38, y: 75 },
         };
+      } else {
+        result = {
+          pitchLength: 'good_length',
+          pitchLine: 'on_stumps',
+          pitchCoord: { x: 50, y: 60 },
+        };
       }
-      return {
-        pitchLength: 'good_length',
-        pitchLine: 'on_stumps',
-        pitchCoord: { x: 50, y: 60 },
-      };
+      break;
   }
+
+  // UI-001: For left-handed batters, mirror the horizontal coordinate across stumps center (50)
+  if (battingHand === 'left') {
+    return {
+      ...result,
+      pitchCoord: {
+        x: 100 - result.pitchCoord.x,
+        y: result.pitchCoord.y,
+      },
+    };
+  }
+
+  return result;
 }
 
 export const formatOvers = (legalBalls: number): string => {
@@ -250,9 +341,13 @@ export const createInitialInnings = (
       total: 0,
     },
     deliveries: [],
+    actions: [],
     batterStats,
     bowlerStats,
     fallOfWickets: [],
+    initialStrikerId: strikerId,
+    initialNonStrikerId: nonStrikerId,
+    initialBowlerId: bowlerId,
     currentStrikerId: strikerId,
     currentNonStrikerId: nonStrikerId,
     currentBowlerId: bowlerId,
@@ -264,77 +359,198 @@ export const createInitialInnings = (
 
 export class CricketEngine {
   /**
-   * Replays an entire sequence of deliveries to produce an immutable, pristine Innings state.
-   * This guarantees 100% mathematical integrity for edits and undos.
+   * Models an explicit non-delivery retirement action (MCC Law 25.4).
+   * Does NOT manufacture a delivery or increment balls faced.
+   */
+  static retireBatter(
+    innings: Innings,
+    playerId: string,
+    dismissalType: 'retired_hurt' | 'retired_out',
+    timestamp: number = Date.now()
+  ): Innings {
+    const updated = JSON.parse(JSON.stringify(innings)) as Innings;
+    const batter = updated.batterStats[playerId];
+
+    if (dismissalType === 'retired_hurt') {
+      // MCC Law 25.4: Retired Hurt does NOT increment totalWickets and batter is not out
+      if (batter) {
+        batter.isOut = false;
+        batter.dismissalText = 'retired hurt (not out)';
+      }
+    } else {
+      // Retired Out: counts as dismissal and team wicket, but no bowler credit
+      updated.totalWickets += 1;
+      if (batter) {
+        batter.isOut = true;
+        batter.dismissalText = 'retired out';
+      }
+      updated.fallOfWickets.push({
+        wicketNumber: updated.totalWickets,
+        score: updated.totalRuns,
+        oversFormatted: updated.oversFormatted,
+        playerDismissedId: playerId,
+      });
+    }
+
+    // Vacate the crease slot
+    if (updated.currentStrikerId === playerId) {
+      updated.currentStrikerId = undefined;
+    } else if (updated.currentNonStrikerId === playerId) {
+      updated.currentNonStrikerId = undefined;
+    }
+
+    if (!updated.actions) updated.actions = [];
+    updated.actions.push({
+      type: 'RETIRE_BATTER',
+      playerId,
+      dismissalType,
+      timestamp,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Models a batter returning to the crease after being retired hurt.
+   */
+  static returnBatter(
+    innings: Innings,
+    playerId: string,
+    slot: 'striker' | 'nonStriker',
+    timestamp: number = Date.now()
+  ): Innings {
+    const updated = JSON.parse(JSON.stringify(innings)) as Innings;
+    const batter = updated.batterStats[playerId];
+    if (batter) {
+      batter.dismissalText = undefined;
+      batter.isOut = false;
+    }
+    if (slot === 'striker') {
+      updated.currentStrikerId = playerId;
+    } else {
+      updated.currentNonStrikerId = playerId;
+    }
+
+    if (!updated.actions) updated.actions = [];
+    updated.actions.push({
+      type: 'RETURN_BATTER',
+      playerId,
+      slot,
+      timestamp,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Replays an entire sequence of actions or deliveries from an immutable innings origin.
+   * Guarantees 100% mathematical integrity for edits and undos.
    */
   static replayInnings(
     initialInnings: Innings,
-    deliveries: Delivery[],
+    actionsOrDeliveries: (InningsAction | Delivery)[],
     rules: MatchRules,
     targetRuns?: number
   ): Innings {
-    const fresh: Innings = {
-      ...initialInnings,
-      totalRuns: 0,
-      totalWickets: 0,
-      legalBallsBowled: 0,
-      oversFormatted: '0.0',
-      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalties: 0, total: 0 },
-      deliveries: [],
-      batterStats: {},
-      bowlerStats: {},
-      fallOfWickets: [],
-      isFreeHit: false,
-      bowlerSide: initialInnings.bowlerSide || 'over',
-      isCompleted: false,
-      completedReason: undefined,
-    };
+    // Determine immutable origin
+    const originStrikerId =
+      initialInnings.initialStrikerId ||
+      initialInnings.deliveries[0]?.strikerId ||
+      initialInnings.currentStrikerId;
+    const originNonStrikerId =
+      initialInnings.initialNonStrikerId ||
+      initialInnings.deliveries[0]?.nonStrikerId ||
+      initialInnings.currentNonStrikerId;
+    const originBowlerId =
+      initialInnings.initialBowlerId ||
+      initialInnings.deliveries[0]?.bowlerId ||
+      initialInnings.currentBowlerId;
 
-    // Replay deliveries one-by-one
-    let currentInnings = fresh;
-    for (const d of deliveries) {
-      currentInnings = CricketEngine.applyDelivery(currentInnings, d, rules, targetRuns);
-    }
+    let currentInnings = createInitialInnings(
+      initialInnings.inningsNumber,
+      initialInnings.battingTeamId,
+      initialInnings.bowlingTeamId,
+      originStrikerId,
+      originNonStrikerId,
+      originBowlerId
+    );
+    currentInnings.bowlerSide = initialInnings.bowlerSide || 'over';
 
-    // If replayed down to 0 deliveries, preserve opening batter & bowler slots at 0-stat baseline
-    if (deliveries.length === 0) {
-      if (currentInnings.currentStrikerId) {
-        currentInnings.batterStats[currentInnings.currentStrikerId] = {
-          playerId: currentInnings.currentStrikerId,
-          runs: 0,
-          ballsFaced: 0,
-          fours: 0,
-          sixes: 0,
-          strikeRate: 0,
-          isOut: false,
-          battingOrder: 1,
-        };
-      }
-      if (currentInnings.currentNonStrikerId) {
-        currentInnings.batterStats[currentInnings.currentNonStrikerId] = {
-          playerId: currentInnings.currentNonStrikerId,
-          runs: 0,
-          ballsFaced: 0,
-          fours: 0,
-          sixes: 0,
-          strikeRate: 0,
-          isOut: false,
-          battingOrder: 2,
-        };
-      }
-      if (currentInnings.currentBowlerId) {
-        currentInnings.bowlerStats[currentInnings.currentBowlerId] = {
-          playerId: currentInnings.currentBowlerId,
-          legalBalls: 0,
-          oversFormatted: '0.0',
-          maidens: 0,
-          runsConceded: 0,
-          wickets: 0,
-          economy: 0,
-          wides: 0,
-          noBalls: 0,
-          dots: 0,
-        };
+    for (const item of actionsOrDeliveries) {
+      if ('type' in item && typeof (item as any).type === 'string') {
+        const action = item as InningsAction;
+        switch (action.type) {
+          case 'DELIVERY':
+            currentInnings = CricketEngine.applyDelivery(currentInnings, action.delivery, rules, targetRuns);
+            break;
+          case 'RETIRE_BATTER':
+            currentInnings = CricketEngine.retireBatter(currentInnings, action.playerId, action.dismissalType, action.timestamp);
+            break;
+          case 'RETURN_BATTER':
+            currentInnings = CricketEngine.returnBatter(currentInnings, action.playerId, action.slot, action.timestamp);
+            break;
+          case 'SELECT_BOWLER': {
+            currentInnings.currentBowlerId = action.bowlerId;
+            if (!currentInnings.bowlerStats[action.bowlerId]) {
+              currentInnings.bowlerStats[action.bowlerId] = {
+                playerId: action.bowlerId,
+                oversFormatted: '0.0',
+                legalBalls: 0,
+                maidens: 0,
+                runsConceded: 0,
+                wickets: 0,
+                economy: 0,
+                wides: 0,
+                noBalls: 0,
+                dots: 0,
+              };
+            }
+            if (!currentInnings.actions) currentInnings.actions = [];
+            currentInnings.actions.push(action);
+            break;
+          }
+          case 'SELECT_BATTER': {
+            if (!currentInnings.batterStats[action.playerId]) {
+              currentInnings.batterStats[action.playerId] = {
+                playerId: action.playerId,
+                runs: 0,
+                ballsFaced: 0,
+                fours: 0,
+                sixes: 0,
+                strikeRate: 0,
+                isOut: false,
+                battingOrder: Object.keys(currentInnings.batterStats).length + 1,
+              };
+            } else {
+              currentInnings.batterStats[action.playerId].isOut = false;
+              currentInnings.batterStats[action.playerId].dismissalText = undefined;
+            }
+            if (action.slot === 'striker') {
+              currentInnings.currentStrikerId = action.playerId;
+              if (currentInnings.currentNonStrikerId === action.playerId) {
+                currentInnings.currentNonStrikerId = undefined;
+              }
+            } else {
+              currentInnings.currentNonStrikerId = action.playerId;
+              if (currentInnings.currentStrikerId === action.playerId) {
+                currentInnings.currentStrikerId = undefined;
+              }
+            }
+            if (!currentInnings.actions) currentInnings.actions = [];
+            currentInnings.actions.push(action);
+            break;
+          }
+          case 'SWAP_ENDS': {
+            const temp = currentInnings.currentStrikerId;
+            currentInnings.currentStrikerId = currentInnings.currentNonStrikerId;
+            currentInnings.currentNonStrikerId = temp;
+            if (!currentInnings.actions) currentInnings.actions = [];
+            currentInnings.actions.push(action);
+            break;
+          }
+        }
+      } else {
+        currentInnings = CricketEngine.applyDelivery(currentInnings, item as Delivery, rules, targetRuns);
       }
     }
 
@@ -366,6 +582,8 @@ export class CricketEngine {
       runsBat,
       runsExtra,
       extraType,
+      extrasDetail,
+      physicalRunsRan,
       isLegalDelivery,
       isBoundary,
       isSix,
@@ -377,19 +595,19 @@ export class CricketEngine {
       shotArea,
     } = delivery;
 
-    // MCC Law 21.19 / Free Hit rule: On a Free Hit, batsman cannot be dismissed
-    // bowled, caught, caught_and_bowled, lbw, stumped, or hit_wicket. Only run_out,
-    // retired_hurt, retired_out, obstructing_field are permitted!
-    if (wasFreeHit && isWicket && wicketDetails) {
-      const allowedOnFreeHit: DismissalType[] = [
-        'run_out',
-        'retired_hurt',
-        'retired_out',
-        'obstructing_field',
-        'hit_twice',
-      ];
-      if (!allowedOnFreeHit.includes(wicketDetails.dismissalType)) {
-        // Negate the wicket on Free Hit
+    // MCC Law 21.19 / 22.17 / Free Hit dismissal legality validation (CRIC-003)
+    const isNoBallDelivery = extraType === 'noBall' || Boolean(extrasDetail?.noBall);
+    const isWideDelivery = extraType === 'wide' || Boolean(extrasDetail?.wide);
+
+    if (isWicket && wicketDetails) {
+      const legality = validateDismissalLegality(wicketDetails.dismissalType, {
+        isNoBall: isNoBallDelivery,
+        isWide: isWideDelivery,
+        isFreeHit: wasFreeHit,
+      });
+
+      if (!legality.isLegal) {
+        // Negate the illegal dismissal per MCC Laws
         isWicket = false;
         delivery.isWicket = false;
         delivery.wicketDetails = undefined;
@@ -401,21 +619,30 @@ export class CricketEngine {
     updated.totalRuns += runsOnBall;
 
     // Extras breakdown
-    if (extraType === 'wide') {
-      updated.extras.wides += runsExtra;
+    if (extrasDetail) {
+      if (extrasDetail.wide) updated.extras.wides += extrasDetail.wide;
+      if (extrasDetail.noBall) updated.extras.noBalls += extrasDetail.noBall;
+      if (extrasDetail.bye) updated.extras.byes += extrasDetail.bye;
+      if (extrasDetail.legBye) updated.extras.legByes += extrasDetail.legBye;
+      if (extrasDetail.penalty) updated.extras.penalties += extrasDetail.penalty;
       updated.extras.total += runsExtra;
-    } else if (extraType === 'noBall') {
-      updated.extras.noBalls += runsExtra;
-      updated.extras.total += runsExtra;
-    } else if (extraType === 'bye') {
-      updated.extras.byes += runsExtra;
-      updated.extras.total += runsExtra;
-    } else if (extraType === 'legBye') {
-      updated.extras.legByes += runsExtra;
-      updated.extras.total += runsExtra;
-    } else if (extraType === 'penalty') {
-      updated.extras.penalties += runsExtra;
-      updated.extras.total += runsExtra;
+    } else {
+      if (extraType === 'wide') {
+        updated.extras.wides += runsExtra;
+        updated.extras.total += runsExtra;
+      } else if (extraType === 'noBall') {
+        updated.extras.noBalls += runsExtra;
+        updated.extras.total += runsExtra;
+      } else if (extraType === 'bye') {
+        updated.extras.byes += runsExtra;
+        updated.extras.total += runsExtra;
+      } else if (extraType === 'legBye') {
+        updated.extras.legByes += runsExtra;
+        updated.extras.total += runsExtra;
+      } else if (extraType === 'penalty') {
+        updated.extras.penalties += runsExtra;
+        updated.extras.total += runsExtra;
+      }
     }
 
     // Legal ball count
@@ -473,8 +700,9 @@ export class CricketEngine {
     if (extraType !== 'wide') {
       striker.ballsFaced += 1;
     }
-    if (isBoundary) striker.fours += 1;
-    if (isSix) striker.sixes += 1;
+    // CRIC-002: ONLY credit batter fours and sixes for valid bat boundaries!
+    if (isBoundary && runsBat === 4) striker.fours += 1;
+    if (isSix && runsBat === 6) striker.sixes += 1;
     striker.strikeRate =
       striker.ballsFaced > 0 ? Number(((striker.runs / striker.ballsFaced) * 100).toFixed(1)) : 0;
 
@@ -484,17 +712,23 @@ export class CricketEngine {
       bowler.legalBalls += 1;
       bowler.oversFormatted = formatOvers(bowler.legalBalls);
     }
-    if (extraType === 'wide') {
-      bowler.wides += 1;
-    } else if (extraType === 'noBall') {
-      bowler.noBalls += 1;
+    if (extrasDetail) {
+      if (extrasDetail.wide) bowler.wides += 1;
+      if (extrasDetail.noBall) bowler.noBalls += 1;
+    } else {
+      if (extraType === 'wide') bowler.wides += 1;
+      else if (extraType === 'noBall') bowler.noBalls += 1;
     }
 
     // Runs charged to bowler (byes, leg byes, and penalties do not count against bowler)
-    const runsAgainstBowler =
-      extraType === 'bye' || extraType === 'legBye' || extraType === 'penalty'
-        ? runsBat
-        : runsBat + runsExtra;
+    let runsAgainstBowler = runsBat;
+    if (extrasDetail) {
+      runsAgainstBowler += (extrasDetail.noBall || 0) + (extrasDetail.wide || 0);
+    } else if (extraType === 'bye' || extraType === 'legBye' || extraType === 'penalty') {
+      runsAgainstBowler = runsBat;
+    } else {
+      runsAgainstBowler = runsBat + runsExtra;
+    }
 
     bowler.runsConceded += runsAgainstBowler;
     if (isLegalDelivery && runsAgainstBowler === 0) {
@@ -524,13 +758,8 @@ export class CricketEngine {
           );
         }
 
-        // Check if bowler is credited with wicket
-        if (
-          wicketDetails.dismissalType !== 'run_out' &&
-          wicketDetails.dismissalType !== 'retired_out' &&
-          wicketDetails.dismissalType !== 'timed_out' &&
-          wicketDetails.dismissalType !== 'obstructing_field'
-        ) {
+        // Check if bowler is credited with wicket (CRIC-004: Strict Whitelist)
+        if (isBowlerCreditedDismissal(wicketDetails.dismissalType)) {
           bowler.wickets += 1;
         }
 
@@ -569,7 +798,7 @@ export class CricketEngine {
     // 1. If this delivery was a No-Ball and rules enable Free Hit -> next ball is Free Hit
     // 2. If this delivery was already a Free Hit and was illegal (wide or no-ball) -> carry over!
     // 3. Otherwise Free Hit expires.
-    if (extraType === 'noBall' && rules.freeHitOnNoBall) {
+    if ((extraType === 'noBall' || Boolean(extrasDetail?.noBall)) && rules.freeHitOnNoBall) {
       updated.isFreeHit = true;
     } else if (wasFreeHit && !isLegalDelivery) {
       updated.isFreeHit = true; // Carry over on wide or no-ball
@@ -634,21 +863,27 @@ export class CricketEngine {
       });
     }
 
-    // Strike Rotation
+    // Strike Rotation (CRIC-006: derived from physical runs)
     let nextStrikerId = updated.currentStrikerId;
     let nextNonStrikerId = updated.currentNonStrikerId;
     const overFinished = isLegalDelivery && updated.legalBallsBowled % 6 === 0;
 
-    if (nextStrikerId && nextNonStrikerId) {
-      // Rotate on odd runs running physically between wickets.
-      // On boundaries (4 or 6), batters do not run physical runs between wickets.
-      const physicalRuns =
-        isBoundary || isSix
-          ? 0
-          : extraType === 'wide' || extraType === 'penalty'
-          ? Math.max(0, runsExtra - 1)
-          : runsBat + (extraType === 'bye' || extraType === 'legBye' ? runsExtra : 0);
+    let physicalRuns = 0;
+    if (physicalRunsRan !== undefined) {
+      physicalRuns = physicalRunsRan;
+    } else if (isBoundary || isSix) {
+      physicalRuns = 0; // Boundaries do not rotate strike physically
+    } else if (extrasDetail) {
+      physicalRuns = runsBat + (extrasDetail.bye || 0) + (extrasDetail.legBye || 0);
+    } else if (extraType === 'wide') {
+      physicalRuns = Math.max(0, runsExtra - 1);
+    } else if (extraType === 'bye' || extraType === 'legBye') {
+      physicalRuns = runsExtra;
+    } else {
+      physicalRuns = runsBat;
+    }
 
+    if (nextStrikerId && nextNonStrikerId) {
       const rotateForRuns = physicalRuns % 2 === 1;
       if (rotateForRuns) {
         const temp = nextStrikerId;
@@ -668,11 +903,18 @@ export class CricketEngine {
       const temp = nextStrikerId;
       nextStrikerId = nextNonStrikerId;
       nextNonStrikerId = temp;
+    } else if (physicalRuns % 2 === 1) {
+      // One slot is vacant, but physical runs ran on the ball before the dismissal
+      const temp = nextStrikerId;
+      nextStrikerId = nextNonStrikerId;
+      nextNonStrikerId = temp;
     }
 
     updated.currentStrikerId = nextStrikerId;
     updated.currentNonStrikerId = nextNonStrikerId;
     updated.deliveries.push(delivery);
+    if (!updated.actions) updated.actions = [];
+    updated.actions.push({ type: 'DELIVERY', delivery });
 
     // Innings Completion Conditions
     const allOutWickets = rules.playersPerTeam - 1;

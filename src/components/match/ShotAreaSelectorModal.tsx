@@ -21,6 +21,8 @@ import {
   PitchLength,
   PitchLine,
   PitchCoordinate,
+  PitchProvenance,
+  BattingHand,
 } from '../../types/cricket';
 import { derivePitchMapping } from '../../engine/cricketEngine';
 import { Colors } from '../../utils/colors';
@@ -32,11 +34,13 @@ interface ShotAreaSelectorModalProps {
   isSix: boolean;
   isWicket: boolean;
   strikerName?: string;
+  battingHand?: BattingHand;
   onSelectSector: (
     sector: ShotSector,
     pitchLength?: PitchLength,
     pitchLine?: PitchLine,
-    pitchCoord?: PitchCoordinate
+    pitchCoord?: PitchCoordinate,
+    pitchProvenance?: PitchProvenance
   ) => void;
   onSkip: () => void;
   onEnableQuickScoring: () => void;
@@ -62,6 +66,24 @@ export const SECTOR_DEFINITIONS: SectorDefinition[] = [
   { sector: 'Square Leg', startAngle: 270, endAngle: 306, centerAngle: 288, shortLabel: 'SQL' },
   { sector: 'Fine Leg', startAngle: 306, endAngle: 342, centerAngle: 324, shortLabel: 'FNL' },
 ];
+
+export function getSectorDefinitions(battingHand: BattingHand = 'right'): SectorDefinition[] {
+  if (battingHand === 'left') {
+    return [
+      { sector: 'Behind Keeper', startAngle: 342, endAngle: 18, centerAngle: 0, shortLabel: 'BHK' },
+      { sector: 'Fine Leg', startAngle: 18, endAngle: 54, centerAngle: 36, shortLabel: 'FNL' },
+      { sector: 'Square Leg', startAngle: 54, endAngle: 90, centerAngle: 72, shortLabel: 'SQL' },
+      { sector: 'Mid-Wicket', startAngle: 90, endAngle: 126, centerAngle: 108, shortLabel: 'MID' },
+      { sector: 'Long-On', startAngle: 126, endAngle: 162, centerAngle: 144, shortLabel: 'LON' },
+      { sector: 'Long-Off', startAngle: 162, endAngle: 198, centerAngle: 180, shortLabel: 'LOF' },
+      { sector: 'Mid-Off', startAngle: 198, endAngle: 234, centerAngle: 216, shortLabel: 'MOF' },
+      { sector: 'Cover', startAngle: 234, endAngle: 270, centerAngle: 252, shortLabel: 'COV' },
+      { sector: 'Point', startAngle: 270, endAngle: 306, centerAngle: 288, shortLabel: 'PNT' },
+      { sector: 'Third Man', startAngle: 306, endAngle: 342, centerAngle: 324, shortLabel: '3RD' },
+    ];
+  }
+  return SECTOR_DEFINITIONS;
+}
 
 function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
@@ -107,22 +129,26 @@ export const ShotAreaSelectorModal: React.FC<ShotAreaSelectorModalProps> = ({
   isSix,
   isWicket,
   strikerName,
+  battingHand = 'right',
   onSelectSector,
   onSkip,
   onEnableQuickScoring,
 }) => {
-  const [selectedSector, setSelectedSector] = useState<ShotSector>('Cover');
+  const sectors = getSectorDefinitions(battingHand);
+  const [selectedSector, setSelectedSector] = useState<ShotSector>(
+    battingHand === 'left' ? 'Fine Leg' : 'Cover'
+  );
   const [mappingMode, setMappingMode] = useState<'auto' | 'touch' | 'off'>('auto');
 
   // Manual pitch mapping states (when in 'touch' mode)
   const [manualLength, setManualLength] = useState<PitchLength>('good_length');
   const [manualLine, setManualLine] = useState<PitchLine>('on_stumps');
 
-  const autoMapping = derivePitchMapping(selectedSector, runs, isBoundary, isSix);
+  const autoMapping = derivePitchMapping(selectedSector, runs, isBoundary, isSix, battingHand);
 
   const handleConfirm = (sectorToCommit: ShotSector = selectedSector) => {
     if (mappingMode === 'off') {
-      onSelectSector(sectorToCommit);
+      onSelectSector(sectorToCommit, undefined, undefined, undefined, 'unknown');
     } else if (mappingMode === 'touch') {
       const yMap: Record<PitchLength, number> = {
         yorker: 92,
@@ -135,15 +161,19 @@ export const ShotAreaSelectorModal: React.FC<ShotAreaSelectorModalProps> = ({
         on_stumps: 50,
         down_leg: 65,
       };
+      let rawX = xMap[manualLine] ?? 50;
+      if (battingHand === 'left') {
+        rawX = 100 - rawX;
+      }
       const touchCoord: PitchCoordinate = {
-        x: xMap[manualLine] ?? 50,
+        x: rawX,
         y: yMap[manualLength] ?? 58,
       };
-      onSelectSector(sectorToCommit, manualLength, manualLine, touchCoord);
+      onSelectSector(sectorToCommit, manualLength, manualLine, touchCoord, 'observed');
     } else {
       // auto mode
-      const derived = derivePitchMapping(sectorToCommit, runs, isBoundary, isSix);
-      onSelectSector(sectorToCommit, derived.pitchLength, derived.pitchLine, derived.pitchCoord);
+      const derived = derivePitchMapping(sectorToCommit, runs, isBoundary, isSix, battingHand);
+      onSelectSector(sectorToCommit, derived.pitchLength, derived.pitchLine, derived.pitchCoord, 'estimated');
     }
   };
 
@@ -272,7 +302,7 @@ export const ShotAreaSelectorModal: React.FC<ShotAreaSelectorModalProps> = ({
                 />
 
                 {/* 10 Touchable Sector Wedges */}
-                {SECTOR_DEFINITIONS.map((s) => {
+                {sectors.map((s) => {
                   const isSelected = selectedSector === s.sector;
                   const wedgeD = makeWedgePath(
                     center,

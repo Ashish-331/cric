@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Animated,
   TouchableOpacity,
+  View,
 } from 'react-native';
 
 export type CelebrationType = 'four' | 'six' | 'wicket' | 'fifty' | 'hundred' | 'win';
@@ -13,6 +14,7 @@ interface CelebrationOverlayProps {
   type: CelebrationType | null;
   title?: string;
   subtitle?: string;
+  mode?: 'modal' | 'toast';
   onDismiss: () => void;
 }
 
@@ -21,6 +23,7 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({
   type,
   title,
   subtitle,
+  mode = 'toast',
   onDismiss,
 }) => {
   const scaleAnim = useRef(new Animated.Value(0.3)).current;
@@ -128,6 +131,33 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({
   };
 
   const config = getConfig();
+  const isToast = mode === 'toast';
+
+  if (isToast) {
+    return (
+      <View style={styles.toastContainer} pointerEvents="box-none">
+        <TouchableOpacity activeOpacity={0.9} onPress={handleDismiss}>
+          <Animated.View
+            style={[
+              styles.toastCard,
+              {
+                backgroundColor: config.bg,
+                transform: [{ scale: scaleAnim }],
+                opacity: opacityAnim,
+              },
+            ]}
+          >
+            <Text style={[styles.toastMainText, { color: config.textColor }]}>
+              {config.mainText}
+            </Text>
+            <Text style={[styles.toastSubText, { color: config.textColor }]}>
+              {config.sub}
+            </Text>
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <TouchableOpacity
@@ -157,6 +187,42 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({
 };
 
 const styles = StyleSheet.create({
+  toastContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  toastCard: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    maxWidth: '90%',
+  },
+  toastMainText: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  toastSubText: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+    textAlign: 'center',
+  },
   backdrop: {
     position: 'absolute',
     top: 0,

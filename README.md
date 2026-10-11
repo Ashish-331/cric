@@ -3,58 +3,54 @@
 [![Expo SDK 57](https://img.shields.io/badge/Expo-SDK_57-blue.svg)](https://expo.dev)
 [![React Native 0.86](https://img.shields.io/badge/React_Native-0.86-61DAFB.svg)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6.svg)](https://www.typescriptlang.org)
-[![Tests Passing](https://img.shields.io/badge/Tests-32%2F32_Passed-success.svg)](#testing)
+[![Tests Passing](https://img.shields.io/badge/Tests-43%2F43_Passed-success.svg)](#testing)
 
 A high-performance, grassroots-to-professional Cricket Scoring, Tournament Management, and Player Analytics mobile application built with **Expo SDK 57**, **React Native 0.86**, **Expo Router**, and **AsyncStorage**.
+
+Designed for complete zero-infrastructure offline reliability, genuine MCC Laws of Cricket adherence, and ergonomic pitch-side scoring.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. 🏟️ Interactive Touch Wagon Wheel
-- **Instant Dot-Ball Commit**: Dot deliveries bypass modal interruption for rapid 1-tap scoring on the field.
-- **Visual Circular SVG Ground**: Non-dot balls (runs, boundaries, catches, and run-outs) open an interactive circular ground with **10 touchable annular sector wedges**:
+### 1. 🏟️ Interactive Touch Wagon Wheel & Pitch Radar
+- **Instant Dot-Ball Commit**: Quick Scoring enabled by default; dot deliveries commit instantly without modal interruption for rapid single-tap scoring on the field.
+- **Visual Circular SVG Ground**: Non-dot deliveries (runs, boundaries, catches, and run-outs) open an interactive circular ground with **10 touchable annular sector wedges**:
   * *Behind Keeper*, *Third Man*, *Point*, *Cover*, *Mid-Off*, *Long-Off*, *Long-On*, *Mid-Wicket*, *Square Leg*, *Fine Leg*.
-- **3-Way Pitch Delivery Mapping**:
-  * **Auto Mode**: Automatically deduces delivery length and line from the shot played (e.g., cut $\to$ short outside off, cover drive $\to$ full outside off, pull $\to$ short on stumps, sweep $\to$ full/yorker).
-  * **Touch Pitch**: Interactive mini 22-yard pitch selector allowing manual length and line plotting.
-  * **Off**: Skips pitch mapping completely.
+  * Left-Hand / Right-Hand dynamic mirroring (Off-side vs Leg-side field orientation).
+- **Pitch Delivery Radar & Provenance Filter**:
+  * Proportional 22-yard pitch strip (not squished) with popping creases, bowling crease, stumps, and length zones (*Short*, *Good Length*, *Full*, *Yorker*).
+  * Dual Perspective Toggle: **By Bowler** vs **By Batter**.
+  * Factual Data Provenance: Tagged as `🎯 Observed` (manual tap) or `✨ Estimated` (auto-derived from shot), with provenance filtering.
 
-### 2. 🎯 Slender 22-Yard Pitch Radar SVG
-- Proportional 22-yard pitch strip (not squished) with popping creases, bowling crease, stumps, and 4 length zones (*Short*, *Good Length*, *Full*, *Yorker*).
-- **Dual Perspective Toggle**:
-  * **By Bowler**: Displays deliveries bowled by the selected bowler.
-  * **By Batter**: Displays deliveries faced by the selected batsman.
-- Plots real coordinates with tap-to-inspect delivery details.
+### 2. 📜 Trustworthy Cricket Scoring (MCC Laws Compliant)
+- **100% Deterministic Undo**: Restores opening batter slots, striker/non-striker crease ends, bowling figures, and over boundaries cleanly via immutable replay origin.
+- **Boundary Extras Attribution**: Boundary byes and leg-byes award team extras and 0 bowler concession; batter runs and batter fours remain 0.
+- **Law 21.19 & 22.17 Dismissal Legality Matrix**: Strictly validates dismissals on No-Balls and Wides. Bowled, Caught, LBW, Stumped, and Hit Wicket on a No-Ball or Free Hit are validated as illegal and negated.
+- **Bowler Credit Whitelist**: Strict whitelist of bowler-credited dismissals (`bowled`, `caught`, `caught_and_bowled`, `lbw`, `stumped`, `hit_wicket`). Run out, retired out, and hit the ball twice never credit the bowler.
+- **Non-Delivery Retirements**: MCC Law 25.4 `Retired Hurt` (not out, wickets unchanged) and `Retired Out` recorded as explicit actions without manufacturing phantom deliveries or incrementing balls faced.
+- **Compound Extras**: Full support for No-Ball penalties combined with byes, leg-byes, or bat runs, with physical run parity dictating end placements.
 
-### 3. 🏆 Unrestricted Tournament Organization & Dynamic Points Table
-- **Open Governance**: Any user with a verified profile can create matches or tournaments without role restrictions.
+### 3. 🛡️ Durable Offline Persistence & Data Migration
+- **Match-Scoped Partitioning**: Each match is isolated under `@cric_match_<id>` with a master index at `@cric_match_ids_v2`, preventing write amplification.
+- **In-Memory Write Serialization Queue**: Sequential promise execution guarantees atomic FIFO write order per match, eliminating write-interleaving race conditions.
+- **Zero-Loss Migration**: Automatically detects and migrates legacy monolithic records from `@cric_matches_v1`, creates verified backups under `@cric_matches_v1_backup`, and handles corruptions gracefully with structured `StorageError` codes.
+
+### 4. 👤 Honest Authentication & Ghost Accounts
+- **Default Guest Scorer**: Fresh installs start as an unauthenticated Guest Scorer without simulated fake cloud profiles.
+- **Offline Scoring First**: Guest users can immediately score matches offline without phone verification or internet connectivity.
+- **Canonical E.164 Phone Normalization**: Eliminates trailing 10-digit collisions across country codes (+1 vs +91).
+- **Ghost Player Support**: Captains can add teammates to club rosters as "Ghost Players" with a Name and Phone Number; when a user registers or signs in with that number, historical match records and stats are automatically linked and claimed.
+
+### 5. 🏆 Unrestricted Tournament Organization & Dynamic Points Table
+- **Open Governance**: Any user with a verified profile can organize tournaments and fixtures.
 - **Official ICC Net Run Rate (NRR) Formula**:
   $$\text{NRR} = \left(\frac{\text{Runs Scored}}{\text{Overs Faced}}\right) - \left(\frac{\text{Runs Conceded}}{\text{Overs Bowled}}\right)$$
-  * Implements the **ICC All-Out Rule**: If a team is bowled out inside their allotted overs, the entire innings quota is credited as the divisor.
+  * Implements the **ICC All-Out Rule**: If a team is bowled out inside their allotted overs, the full innings quota is credited as the divisor.
   * Epsilon normalization eliminates `+-0.000` float artifacts.
 - **Dynamic Leaderboards (Zero Hardcoding)**:
-  * **Fantasy MVP**: $\text{Runs} \times 1 + \text{4s} \times 1 + \text{6s} \times 2 + \text{Wickets} \times 25 + \text{Maidens} \times 8 + \text{Catches} \times 8 + \text{Stumpings} \times 12 + \text{RunOuts} \times 8$.
-  * **Orange Cap**: Top run aggregate, balls faced, strike rate, high score.
-  * **Purple Cap**: Top wicket aggregate, overs bowled, economy rate, best bowling.
-  * **Top Fielders**: Catches, stumpings, and run-outs.
-
-### 4. 👤 Ghost Accounts with Mobile Claiming Flow
-- Captains can add teammates to club rosters as "Ghost Players" with just a Name and Phone Number.
-- Ghost players can play in matches, bat, bowl, field, and accumulate career statistics.
-- Unverified/guest accounts are restricted from organizing tournaments until verification.
-- **Automated Phone Claiming**: When a user registers or logs in with their mobile number, prior match records and ghost profiles are automatically detected, claimed, and merged into their verified profile.
-
-### 5. 🎙️ Broadcast Commentary & Event Trivia
-- Commentary feed with live bowler spell figures `(2.1-0-14-1)` to batter `(42* off 28b)` from over/round the wicket.
-- Automated fanfare for Maiden Overs (`🔥 MAIDEN OVER!`).
-- Boundary drought alerts (`⏳ Pressure mounting! 18 balls without a boundary` and `💥 Pressure released!`).
-- Milestones: 50s, 100s, 50-run and 100-run partnerships, 5-wicket hauls.
-
-### 6. 📜 MCC Laws Compliance
-- **Free Hit State Machine**: No-balls trigger Free Hits; illegal dismissals (Bowled, Caught, LBW, Stumped, Hit Wicket) are negated; Free Hit carries over on wides/no-balls.
-- **MCC Law 25.4 (Retired Hurt)**: Retired Hurt does not increment wickets lost; the batter vacates the crease not out.
-- **100% Deterministic 1-Tap Undo**: Restores striker/non-striker positions, over transitions, and legal balls cleanly.
+  * **Fantasy MVP**: Calculated dynamically across all tournament fixtures.
+  * **Orange Cap & Purple Cap**: Dynamic run and wicket leaderboards.
 
 ---
 
@@ -64,7 +60,7 @@ A high-performance, grassroots-to-professional Cricket Scoring, Tournament Manag
 src/
 ├── app/                      # Expo Router screens
 │   ├── (tabs)/               # Bottom tabs (Matches, Teams, New Match, Profile, Settings)
-│   ├── auth/login.tsx        # International OTP authentication & guest flow
+│   ├── auth/login.tsx        # Phone OTP authentication & guest flow
 │   ├── match/[id]/           # Match center & live ball-by-ball scorer console
 │   ├── player/[id].tsx       # Player profile & career statistics
 │   ├── teams/[id].tsx        # Squad management & ghost player addition
@@ -76,17 +72,26 @@ src/
 ├── context/                  # CricketContext (global state provider)
 ├── engine/                   # CricketEngine & StatsRollupEngine (pure TypeScript)
 ├── services/                 # Tactile haptics (expo-haptics)
-├── storage/                  # AsyncStorage persistent storage & default seed data
+├── storage/                  # AsyncStorage persistent storage & migration engine
 ├── types/                    # Domain models & type definitions
 └── utils/                    # Colors & stadium night theme tokens
 ```
 
 ---
 
+## 📚 Technical Documentation
+
+- 📜 [Cricket Rules Compliance Matrix](docs/cricket-rules-matrix.md): Exhaustive breakdown of MCC Laws, dismissal legality, extras, and Free Hit rules.
+- 💾 [Data Migration & Storage Architecture](docs/data-migration.md): Partitioning model, write serialization queue, and migration algorithm.
+- 📋 [Remediation Verification Report](docs/verification-report.md): Defect matrix, root cause analyses, and test execution results.
+- 📝 [Remediation Plan](docs/remediation-plan.md): Initial baseline and staged remediation roadmap.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
+- Node.js (`v18+`, verified on `v26.3.0`)
 - npm or bun
 
 ### Installation
@@ -95,7 +100,7 @@ src/
 git clone https://github.com/Ashish-331/cric.git
 cd cric
 
-# Install dependencies
+# Install SDK-compatible dependencies
 npx expo install
 ```
 
@@ -108,23 +113,23 @@ npx expo start
 Press 'w' in terminal
 
 # Open on iOS / Android
-Scan the QR code with Expo Go (iOS Camera / Android Expo Go app)
+Scan QR code with Expo Go or run a development build
 ```
 
 ---
 
-## 🧪 Testing
+## 🧪 Testing & Verification
 
-The codebase includes comprehensive automated test suites covering rules logic, NRR calculations, ghost claiming, rollups, and end-to-end user journeys:
+The codebase is fortified with comprehensive automated test suites covering rules logic, NRR calculations, ghost claiming, rollups, and end-to-end user journeys:
 
 ```bash
-# Run all unit, rules, and E2E simulation tests
+# Run all automated test suites (43 passing tests)
 npm test
 
-# Typecheck with TypeScript
+# Typecheck with TypeScript (0 errors)
 npx tsc --noEmit
 
-# Diagnose Expo configuration
+# Diagnose Expo configuration (21/21 passed)
 npx expo-doctor
 ```
 

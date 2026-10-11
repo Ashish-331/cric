@@ -19,6 +19,7 @@ import {
   PitchLength,
   PitchLine,
   PitchCoordinate,
+  PitchProvenance,
 } from '../../../types/cricket';
 import { BallInput } from '../../../engine/cricketEngine';
 import { Colors } from '../../../utils/colors';
@@ -41,6 +42,8 @@ export default function ScorerScreen() {
     loadMatchById,
     recordDelivery,
     undoDelivery,
+    retireBatter,
+    returnBatter,
     selectBowler,
     selectStriker,
     selectNonStriker,
@@ -57,7 +60,7 @@ export default function ScorerScreen() {
 
   // Cricketing state additions
   const [bowlingSide, setBowlingSide] = useState<BowlingSide>('over');
-  const [quickScoring, setQuickScoring] = useState<boolean>(false);
+  const [quickScoring, setQuickScoring] = useState<boolean>(true);
   const [shotModalVisible, setShotModalVisible] = useState(false);
   const [pendingBall, setPendingBall] = useState<BallInput | null>(null);
 
@@ -243,7 +246,8 @@ export default function ScorerScreen() {
     sector: ShotSector,
     pitchLength?: PitchLength,
     pitchLine?: PitchLine,
-    pitchCoord?: PitchCoordinate
+    pitchCoord?: PitchCoordinate,
+    pitchProvenance?: PitchProvenance
   ) => {
     if (!pendingBall) return;
     const finalBall: BallInput = {
@@ -252,6 +256,7 @@ export default function ScorerScreen() {
       pitchLength,
       pitchLine,
       pitchCoord,
+      pitchProvenance,
     };
     const wasWicket = Boolean(finalBall.isWicket);
     const dismissedPlayerId = finalBall.dismissedPlayerId;
@@ -296,9 +301,19 @@ export default function ScorerScreen() {
       CricketHaptics.wicket();
       triggerCelebration(
         'wicket',
-        'WICKET DOWN!',
-        `${getPlayer(params.dismissedPlayerId)?.name || 'Batter'} departs (${params.dismissalType.replace('_', ' ').toUpperCase()})`
+        params.dismissalType.includes('retired') ? 'BATTER RETIRED' : 'WICKET DOWN!',
+        `${getPlayer(params.dismissedPlayerId)?.name || 'Batter'} (${params.dismissalType.replace('_', ' ').toUpperCase()})`
       );
+
+      // CRIC-005: Model explicit retirement without manufacturing a delivery
+      if (params.dismissalType === 'retired_hurt' || params.dismissalType === 'retired_out') {
+        await retireBatter(params.dismissedPlayerId, params.dismissalType);
+        const dismissedSlot =
+          params.dismissedPlayerId === currentInnings.currentStrikerId ? 'striker' : 'nonStriker';
+        setBatterSlotToSelect(dismissedSlot);
+        setBatterModalVisible(true);
+        return;
+      }
 
       const wicketBall: BallInput = {
         runsBat: params.runsBat,
@@ -592,7 +607,10 @@ export default function ScorerScreen() {
         currentNonStrikerId={currentInnings.currentNonStrikerId}
         slot={batterSlotToSelect}
         onSelectBatter={(pId) => {
-          if (batterSlotToSelect === 'striker') {
+          const stats = currentInnings.batterStats[pId];
+          if (stats && !stats.isOut && stats.dismissalText?.includes('retired hurt')) {
+            returnBatter(pId, batterSlotToSelect);
+          } else if (batterSlotToSelect === 'striker') {
             selectStriker(pId);
           } else {
             selectNonStriker(pId);
@@ -608,6 +626,7 @@ export default function ScorerScreen() {
         isSix={pendingBall?.isSix || false}
         isWicket={pendingBall?.isWicket || false}
         strikerName={striker?.name}
+        battingHand={striker?.battingHand || 'right'}
         onSelectSector={handleSelectSector}
         onSkip={handleSkipSector}
         onEnableQuickScoring={() => {

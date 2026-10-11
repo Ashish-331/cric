@@ -58,7 +58,7 @@ export interface UserProfile {
   name: string;
   isGuest: boolean;
   isVerified: boolean;
-  role: 'captain' | 'player' | 'organizer';
+  role: 'captain' | 'player' | 'organizer' | 'scorer';
   playingRole?: PlayingRole;
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
@@ -72,7 +72,7 @@ export const DEFAULT_GUEST_USER: UserProfile = {
   phoneNumber: '',
   isGuest: true,
   isVerified: false,
-  role: 'player',
+  role: 'scorer',
   playingRole: 'all-rounder',
   battingHand: 'right',
   bowlingStyle: 'fast-medium',
@@ -80,6 +80,16 @@ export const DEFAULT_GUEST_USER: UserProfile = {
 
 export const PRESET_USERS: UserProfile[] = [
   DEFAULT_GUEST_USER,
+  {
+    id: 'user_scorer',
+    name: 'Official Scorer',
+    phoneNumber: '+91 98765 43212',
+    isGuest: false,
+    isVerified: true,
+    role: 'scorer',
+    playingRole: 'all-rounder',
+    battingHand: 'right',
+  },
   {
     id: 'user_rohit',
     name: 'Rohit Sharma (Captain)',

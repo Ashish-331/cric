@@ -15,6 +15,8 @@ import { Match } from '../../types/cricket';
 import { Colors } from '../../utils/colors';
 import { Badge } from '../../components/common/Badge';
 
+import { PlayerPerformanceService } from '../../services/playerPerformanceService';
+
 export default function MatchesScreen() {
   const { matches, refreshMatches, tournaments, refreshTournaments, userProfile } = useCricket();
   const [filter, setFilter] = useState<'all' | 'live' | 'completed'>('all');
@@ -34,6 +36,11 @@ export default function MatchesScreen() {
 
   const liveMatch = matches.find((m) => m.status === 'live' || m.status === 'innings_break');
 
+  // Stage 3: Resolve current player's live performance across ongoing matches
+  const myLiveFigure = userProfile?.id
+    ? PlayerPerformanceService.getLiveFiguresForPlayer(userProfile.id, matches)
+    : null;
+
   const renderMatchCard = ({ item }: { item: Match }) => {
     const inn1 = item.innings[0];
     const inn2 = item.innings[1];
@@ -44,6 +51,12 @@ export default function MatchesScreen() {
 
     const firstTeam = team1BattingFirst ? item.team1 : item.team2;
     const secondTeam = team1BattingFirst ? item.team2 : item.team1;
+
+    // Scorer permission boundary check
+    const isAuthorizedScorer =
+      userProfile?.role === 'scorer' ||
+      item.scorerPlayerId === userProfile?.id ||
+      (!item.tournamentId && !item.isSynced);
 
     return (
       <TouchableOpacity
@@ -115,13 +128,23 @@ export default function MatchesScreen() {
           </Text>
 
           {item.status !== 'completed' && (
-            <TouchableOpacity
-              style={styles.scoreActionBtn}
-              onPress={() => router.push(`/match/${item.id}/scorer`)}
-            >
-              <Ionicons name="flash" size={14} color="#FFF" />
-              <Text style={styles.scoreActionText}>Score</Text>
-            </TouchableOpacity>
+            isAuthorizedScorer ? (
+              <TouchableOpacity
+                style={styles.scoreActionBtn}
+                onPress={() => router.push(`/match/${item.id}/scorer`)}
+              >
+                <Ionicons name="flash" size={14} color="#FFF" />
+                <Text style={styles.scoreActionText}>Score</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.scoreActionBtn, { backgroundColor: '#0284C7' }]}
+                onPress={() => router.push(`/match/${item.id}`)}
+              >
+                <Ionicons name="eye" size={14} color="#FFF" />
+                <Text style={styles.scoreActionText}>Follow</Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
       </TouchableOpacity>
@@ -146,8 +169,67 @@ export default function MatchesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Offline Status & Quick Resume Header */}
-      {liveMatch && (
+      {/* Stage 3: My Live Performance Card */}
+      {myLiveFigure && (
+        <TouchableOpacity
+          style={styles.myLiveCard}
+          onPress={() => router.push(`/match/${myLiveFigure.matchId}`)}
+          activeOpacity={0.88}
+        >
+          <View style={styles.myLiveHeaderRow}>
+            <View style={styles.myLivePulseDot} />
+            <Text style={styles.myLiveHeaderTitle}>MY LIVE PERFORMANCE</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={styles.myLiveBadgeText}>{myLiveFigure.isCloudSynced ? 'CLOUD LIVE' : 'PROVISIONAL'}</Text>
+          </View>
+
+          <Text style={styles.myLiveMatchTitle} numberOfLines={1}>
+            {myLiveFigure.matchTitle} • {myLiveFigure.battingTeamName} {myLiveFigure.totalTeamScore}
+          </Text>
+
+          <View style={styles.myLiveStatsRow}>
+            {myLiveFigure.batting && (
+              <View style={styles.myLiveStatBox}>
+                <Text style={styles.myLiveStatLabel}>
+                  Batting {myLiveFigure.batting.isOnStrike ? '🏏 (Strike)' : myLiveFigure.batting.isNonStriker ? '(Non-Strike)' : ''}
+                </Text>
+                <Text style={styles.myLiveStatScore}>
+                  {myLiveFigure.batting.runs}* ({myLiveFigure.batting.ballsFaced}b)
+                </Text>
+                <Text style={styles.myLiveStatSub}>
+                  SR: {myLiveFigure.batting.strikeRate.toFixed(1)} • {myLiveFigure.batting.fours}x4 • {myLiveFigure.batting.sixes}x6
+                </Text>
+              </View>
+            )}
+
+            {myLiveFigure.bowling && (
+              <View style={styles.myLiveStatBox}>
+                <Text style={styles.myLiveStatLabel}>
+                  Bowling {myLiveFigure.bowling.isCurrentBowler ? '🎯 (Bowling)' : ''}
+                </Text>
+                <Text style={styles.myLiveStatScore}>
+                  {myLiveFigure.bowling.wickets}/{myLiveFigure.bowling.runsConceded} ({myLiveFigure.bowling.oversFormatted} ov)
+                </Text>
+                <Text style={styles.myLiveStatSub}>
+                  Econ: {myLiveFigure.bowling.economy.toFixed(1)} • {myLiveFigure.bowling.maidens} maidens
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {myLiveFigure.isDelayed && (
+            <View style={styles.delayedScoreNotice}>
+              <Ionicons name="time-outline" size={13} color="#F59E0B" />
+              <Text style={styles.delayedScoreNoticeText}>
+                Scorer recording offline. Showing last synchronized cloud update.
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Scorer Quick Resume Header (Shown only to authorized scorers) */}
+      {liveMatch && (userProfile?.role === 'scorer' || liveMatch.scorerPlayerId === userProfile?.id) && (
         <View style={styles.liveBanner}>
           <View style={{ flex: 1 }}>
             <Text style={styles.liveBannerTitle}>⚡ Ongoing Match Available</Text>
@@ -620,5 +702,99 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     paddingHorizontal: 32,
+  },
+  myLiveCard: {
+    backgroundColor: '#0F172A',
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  myLiveHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  myLivePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    marginRight: 6,
+  },
+  myLiveHeaderTitle: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  myLiveBadgeText: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  myLiveMatchTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  myLiveStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  myLiveStatBox: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  myLiveStatLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  myLiveStatScore: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 2,
+    fontVariant: ['tabular-nums'],
+  },
+  myLiveStatSub: {
+    color: '#CBD5E1',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  delayedScoreNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginTop: 10,
+    gap: 6,
+  },
+  delayedScoreNoticeText: {
+    color: '#F59E0B',
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
   },
 });

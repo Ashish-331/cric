@@ -19,10 +19,11 @@ import { ScoreboardBanner } from '../../../components/match/ScoreboardBanner';
 import { ScorecardTable } from '../../../components/match/ScorecardTable';
 import { WagonWheelSVG } from '../../../components/match/WagonWheelSVG';
 import { PitchRadarSVG } from '../../../components/match/PitchRadarSVG';
+import { SyncService } from '../../../services/syncService';
 
 export default function MatchCentreScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { loadMatchById, exportMatch, updateMatchStatus } = useCricket();
+  const { loadMatchById, exportMatch, updateMatchStatus, userProfile } = useCricket();
 
   const [match, setMatch] = useState<Match | null>(null);
   const [activeTab, setActiveTab] = useState<'scorecard' | 'commentary' | 'analytics' | 'info'>('scorecard');
@@ -47,6 +48,19 @@ export default function MatchCentreScreen() {
         }
       });
     }
+  }, [id, loadMatchById]);
+
+  // Realtime subscription to live match revision increments
+  useEffect(() => {
+    if (!id) return;
+    const unsubscribe = SyncService.subscribeToMatchRevisions(id, (_newRev) => {
+      loadMatchById(id).then((m) => {
+        if (m) setMatch(m);
+      });
+    });
+    return () => {
+      unsubscribe();
+    };
   }, [id, loadMatchById]);
 
   if (!match) {
@@ -113,11 +127,35 @@ export default function MatchCentreScreen() {
   const inningsBatterIds = currentInnings ? Object.keys(currentInnings.batterStats) : [];
   const inningsBowlerIds = currentInnings ? Object.keys(currentInnings.bowlerStats) : [];
 
+  // Authority & permission check
+  const isAuthorizedScorer =
+    userProfile?.role === 'scorer' ||
+    match.scorerPlayerId === userProfile?.id ||
+    (!match.tournamentId && !match.isSynced);
+
+  // Cloud delay detection (offline scorer)
+  const isCloudDelayed =
+    (match.status === 'live' || match.status === 'innings_break') &&
+    Date.now() - (match.lastUpdated || 0) > 120000;
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Live Score Banner */}
         <ScoreboardBanner match={match} />
+
+        {/* Offline Scorer Delayed Banner */}
+        {isCloudDelayed && (
+          <View style={styles.cloudDelayedBanner}>
+            <Ionicons name="cloud-offline-outline" size={18} color="#D97706" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cloudDelayedTitle}>SCORER RECORDING OFFLINE</Text>
+              <Text style={styles.cloudDelayedSubtitle}>
+                Scorecard reflects the last synchronized cloud state. Updates will resume automatically when scorer reconnects.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Interruption / Delay Banner */}
         {match.status === 'delayed' && (
@@ -158,15 +196,31 @@ export default function MatchCentreScreen() {
           </View>
         )}
 
-        {/* Quick action: Open Scorer if not finished */}
+        {/* Quick action: Open Scorer if authorized, otherwise show Spectator indicator */}
         {match.status !== 'completed' && match.status !== 'abandoned' && (
-          <TouchableOpacity
-            style={styles.openScorerBtn}
-            onPress={() => router.push(`/match/${match.id}/scorer`)}
-          >
-            <Ionicons name="flash" size={18} color="#FFF" />
-            <Text style={styles.openScorerText}>OPEN LIVE SCORER CONSOLE</Text>
-          </TouchableOpacity>
+          isAuthorizedScorer ? (
+            <TouchableOpacity
+              style={styles.openScorerBtn}
+              onPress={() => router.push(`/match/${match.id}/scorer`)}
+            >
+              <Ionicons name="flash" size={18} color="#FFF" />
+              <Text style={styles.openScorerText}>OPEN LIVE SCORER CONSOLE</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.spectatorModeBanner}>
+              <Ionicons name="eye" size={18} color="#0284C7" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.spectatorBannerTitle}>SPECTATOR MODE</Text>
+                <Text style={styles.spectatorBannerSubtitle}>
+                  Viewing official live scorecard. Scoring controls reserved for authorized match scorer.
+                </Text>
+              </View>
+              <View style={styles.liveTagPulse}>
+                <View style={styles.livePulseDot} />
+                <Text style={styles.liveTagText}>LIVE</Text>
+              </View>
+            </View>
+          )
         )}
 
         {/* Sub-Tabs: Scorecard | Commentary | Analytics | Info */}
@@ -770,6 +824,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  cloudDelayedBanner: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  cloudDelayedTitle: {
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  cloudDelayedSubtitle: {
+    color: '#92400E',
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  spectatorModeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1.5,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  spectatorBannerTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0284C7',
+    letterSpacing: 0.5,
+  },
+  spectatorBannerSubtitle: {
+    fontSize: 11,
+    color: '#0369A1',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  liveTagPulse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
+  },
+  liveTagText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#EF4444',
+    letterSpacing: 0.4,
   },
   tabBar: {
     flexDirection: 'row',

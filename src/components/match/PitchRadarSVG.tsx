@@ -70,6 +70,15 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
     filteredBalls = filteredBalls.filter((d) => d.pitchProvenance === 'estimated' || !d.pitchProvenance);
   }
 
+  // A1: Exclude unknown deliveries or deliveries with no pitch coordinates from plotted-point count
+  const plottableBalls = filteredBalls.filter((d) => {
+    if (d.pitchProvenance === 'unknown') return false;
+    if (d.pitchCoord && typeof d.pitchCoord.x === 'number' && typeof d.pitchCoord.y === 'number') {
+      return isFinite(d.pitchCoord.x) && isFinite(d.pitchCoord.y);
+    }
+    return Boolean(d.pitchLength);
+  });
+
   // Length zones coordinates (from top bowling crease to bottom popping crease)
   // pitchY = 25 to 305
   // Short: 25 to 110 (Y=25, height 85)
@@ -84,7 +93,7 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>22-Yard Pitch Radar</Text>
           <Text style={styles.subtitle}>
-            {viewMode === 'bowler' ? 'Deliveries Bowled' : 'Deliveries Faced'} • {filteredBalls.length} Balls Plotted
+            {viewMode === 'bowler' ? 'Deliveries Bowled' : 'Deliveries Faced'} • {plottableBalls.length} Balls Plotted
             {viewMode === 'batter' && selectedBatter ? ` (${selectedBatter.battingHand === 'left' ? 'LH Batter' : 'RH Batter'})` : ''}
           </Text>
         </View>
@@ -326,8 +335,8 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
             {isLeftHander ? 'OFF' : 'LEG'}
           </SvgText>
 
-          {/* Delivery Dots - Plotted according to actual recorded or derived pitch mapping */}
-          {filteredBalls.map((d, i) => {
+          {/* Delivery Dots - Plotted according to actual recorded pitch mapping */}
+          {plottableBalls.map((d, i) => {
             let xPos = pitchX + 55;
             let yPos = pitchY + 140;
 
@@ -347,15 +356,16 @@ export const PitchRadarSVG: React.FC<PitchRadarSVGProps> = ({
               else if (d.pitchLength === 'good_length') yPos = pitchY + 145;
               else if (d.pitchLength === 'short') yPos = pitchY + 55;
 
-              // Map line to X
-              if (d.pitchLine === 'outside_off') xPos = pitchX + 25;
-              else if (d.pitchLine === 'on_stumps') xPos = pitchX + 55;
-              else if (d.pitchLine === 'down_leg') xPos = pitchX + 85;
-            } else {
-              // Auto-derived fallback
-              const auto = derivePitchMapping(d.shotArea, d.runsBat, d.isBoundary, d.isSix);
-              xPos = pitchX + (auto.pitchCoord.x / 100) * pitchW;
-              yPos = pitchY + (auto.pitchCoord.y / 100) * pitchH;
+              // Map line to X respecting batter stance
+              if (isLeftHander) {
+                if (d.pitchLine === 'outside_off') xPos = pitchX + 85;
+                else if (d.pitchLine === 'on_stumps') xPos = pitchX + 55;
+                else if (d.pitchLine === 'down_leg') xPos = pitchX + 25;
+              } else {
+                if (d.pitchLine === 'outside_off') xPos = pitchX + 25;
+                else if (d.pitchLine === 'on_stumps') xPos = pitchX + 55;
+                else if (d.pitchLine === 'down_leg') xPos = pitchX + 85;
+              }
             }
 
             // Slight organic jitter to avoid identical overlaps

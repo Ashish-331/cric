@@ -124,7 +124,7 @@ export default function LoginScreen() {
 
       if (claimedCount > 0) {
         Alert.alert(
-          'Verified & Records Claimed! 🏏👻',
+          'Verified & Historical Records Claimed! 🏏',
           `Welcome! We found ${claimedCount} prior match roster record(s) linked to ${fullPhone}. Your career batting, bowling, and tournament stats have been claimed and unified!`,
           [{ text: 'Open Arena', onPress: () => router.replace('/(tabs)') }]
         );

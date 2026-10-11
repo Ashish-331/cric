@@ -21,6 +21,7 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
   disabled = false,
 }) => {
   const [selectedExtra, setSelectedExtra] = useState<ExtraType>('none');
+  const [noBallSubtype, setNoBallSubtype] = useState<'bat' | 'bye' | 'legBye'>('bat');
 
   const handleRunPress = (runs: number) => {
     if (disabled) return;
@@ -41,27 +42,56 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
         runsBat: 0,
         runsExtra: totalWideExtra,
         extraType: 'wide',
+        extrasDetail: { wide: totalWideExtra },
+        physicalRunsRan: runs,
         isBoundary: false,
         isSix: false,
         isWicket: false,
       });
       setSelectedExtra('none');
     } else if (selectedExtra === 'noBall') {
-      // 1 penalty no-ball + runs scored off the bat
-      onScoreBall({
-        runsBat: runs,
-        runsExtra: 1,
-        extraType: 'noBall',
-        isBoundary: runs === 4,
-        isSix: runs === 6,
-        isWicket: false,
-      });
+      // 1 penalty no-ball + runs (bat runs or byes/leg-byes)
+      if (noBallSubtype === 'bat') {
+        onScoreBall({
+          runsBat: runs,
+          runsExtra: 1,
+          extraType: 'noBall',
+          extrasDetail: { noBall: 1 },
+          isBoundary: runs === 4,
+          isSix: runs === 6,
+          isWicket: false,
+        });
+      } else if (noBallSubtype === 'bye') {
+        onScoreBall({
+          runsBat: 0,
+          runsExtra: 1 + runs,
+          extraType: 'noBall',
+          extrasDetail: { noBall: 1, bye: runs },
+          physicalRunsRan: runs,
+          isBoundary: false,
+          isSix: false,
+          isWicket: false,
+        });
+      } else {
+        onScoreBall({
+          runsBat: 0,
+          runsExtra: 1 + runs,
+          extraType: 'noBall',
+          extrasDetail: { noBall: 1, legBye: runs },
+          physicalRunsRan: runs,
+          isBoundary: false,
+          isSix: false,
+          isWicket: false,
+        });
+      }
       setSelectedExtra('none');
     } else if (selectedExtra === 'bye' || selectedExtra === 'legBye') {
       onScoreBall({
         runsBat: 0,
         runsExtra: runs,
         extraType: selectedExtra,
+        extrasDetail: selectedExtra === 'bye' ? { bye: runs } : { legBye: runs },
+        physicalRunsRan: runs,
         isBoundary: runs === 4,
         isSix: false,
         isWicket: false,
@@ -75,6 +105,9 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
       setSelectedExtra('none');
     } else {
       setSelectedExtra(type);
+      if (type === 'noBall') {
+        setNoBallSubtype('bat');
+      }
     }
   };
 
@@ -83,22 +116,49 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
       {/* Selected Extra Notice if active */}
       {selectedExtra !== 'none' && (
         <View style={styles.extraBanner}>
-          <Text style={styles.extraBannerText}>
-            EXTRA ARMED:{' '}
-            <Text style={styles.extraBannerType}>
-              +{selectedExtra === 'wide'
-                ? 'WIDE'
-                : selectedExtra === 'noBall'
-                ? 'NO BALL'
-                : selectedExtra === 'legBye'
-                ? 'LEG BYE'
-                : 'BYE'}
-            </Text>{' '}
-            — Tap runs (0-6) to record ball
-          </Text>
-          <TouchableOpacity onPress={() => setSelectedExtra('none')} style={styles.cancelExtraBtn}>
-            <Text style={styles.cancelExtraText}>Clear</Text>
-          </TouchableOpacity>
+          <View style={styles.extraBannerHeader}>
+            <Text style={styles.extraBannerText}>
+              EXTRA ARMED:{' '}
+              <Text style={styles.extraBannerType}>
+                +{selectedExtra === 'wide'
+                  ? 'WIDE'
+                  : selectedExtra === 'noBall'
+                  ? 'NO BALL'
+                  : selectedExtra === 'legBye'
+                  ? 'LEG BYE'
+                  : 'BYE'}
+              </Text>{' '}
+              — Tap runs (0-6)
+            </Text>
+            <TouchableOpacity onPress={() => setSelectedExtra('none')} style={styles.cancelExtraBtn}>
+              <Text style={styles.cancelExtraText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* No-Ball Subtype Selector for Compound Extras (CRIC-006) */}
+          {selectedExtra === 'noBall' && (
+            <View style={styles.noBallSubtypesRow}>
+              {(['bat', 'bye', 'legBye'] as const).map((sub) => (
+                <TouchableOpacity
+                  key={sub}
+                  onPress={() => setNoBallSubtype(sub)}
+                  style={[
+                    styles.subTypeChip,
+                    noBallSubtype === sub && styles.subTypeChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.subTypeChipText,
+                      noBallSubtype === sub && styles.subTypeChipTextActive,
+                    ]}
+                  >
+                    {sub === 'bat' ? 'Off Bat' : sub === 'bye' ? '+ Byes' : '+ Leg Byes'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -227,6 +287,26 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
         <TouchableOpacity
           activeOpacity={0.7}
           disabled={disabled}
+          style={styles.allRunBtn}
+          onPress={() => {
+            onScoreBall({
+              runsBat: 4,
+              runsExtra: 0,
+              extraType: 'none',
+              physicalRunsRan: 4,
+              isBoundary: false,
+              isSix: false,
+              isWicket: false,
+              commentary: '4 runs physically completed between wickets',
+            });
+          }}
+        >
+          <Text style={styles.allRunText}>4 Ran</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          disabled={disabled}
           style={styles.swapBtn}
           onPress={onSwapStrike}
         >
@@ -264,9 +344,6 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   extraBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#FEF3C7',
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -274,6 +351,36 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#FDE68A',
+  },
+  extraBannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  noBallSubtypesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  subTypeChip: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#FDE68A',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  subTypeChipActive: {
+    backgroundColor: '#B45309',
+    borderColor: '#92400E',
+  },
+  subTypeChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  subTypeChipTextActive: {
+    color: '#FFFFFF',
   },
   extraBannerText: {
     color: '#92400E',
@@ -432,5 +539,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+  },
+  allRunBtn: {
+    flex: 1,
+    minHeight: 56,
+    backgroundColor: '#38BDF8',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  allRunText: {
+    color: '#082F49',
+    fontSize: 12,
+    fontWeight: '900',
   },
 });

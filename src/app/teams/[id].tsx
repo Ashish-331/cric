@@ -156,7 +156,7 @@ export default function TeamDetailScreen() {
             }}
           >
             <Ionicons name="person-add" size={13} color="#FFF" />
-            <Text style={styles.addGhostBtnText}>Add Ghost Player</Text>
+            <Text style={styles.addGhostBtnText}>Add Player (Unlinked)</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -180,7 +180,7 @@ export default function TeamDetailScreen() {
                 {item.isWicketkeeper && <Text style={styles.tagWK}> (WK)</Text>}
                 {item.isGuest && (
                   <View style={styles.ghostTag}>
-                    <Text style={styles.ghostTagText}>GHOST</Text>
+                    <Text style={styles.ghostTagText}>UNLINKED</Text>
                   </View>
                 )}
               </View>
@@ -197,7 +197,7 @@ export default function TeamDetailScreen() {
         )}
       />
 
-      {/* Add Ghost Player Modal */}
+      {/* Add Player (Unlinked / Not joined yet) Modal */}
       <Modal
         visible={isGhostModalVisible}
         transparent
@@ -208,9 +208,9 @@ export default function TeamDetailScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Add Ghost Player 👻</Text>
+                <Text style={styles.modalTitle}>Add Player (Unlinked / Not joined yet)</Text>
                 <Text style={styles.modalSub}>
-                  Add teammate without app account. Performance stats auto-link by phone!
+                  Add teammate without an existing app account. Career stats automatically claim when they sign in with their phone number!
                 </Text>
               </View>
               <TouchableOpacity

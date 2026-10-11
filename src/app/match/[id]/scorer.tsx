@@ -34,6 +34,7 @@ import { ShotAreaSelectorModal } from '../../../components/match/ShotAreaSelecto
 import { CelebrationOverlay, CelebrationType } from '../../../components/match/CelebrationOverlay';
 import { WagonWheelSVG } from '../../../components/match/WagonWheelSVG';
 import { PitchRadarSVG } from '../../../components/match/PitchRadarSVG';
+import { StorageService } from '../../../storage/storageService';
 
 export default function ScorerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -133,6 +134,10 @@ export default function ScorerScreen() {
   const nonStriker = getPlayer(currentInnings.currentNonStrikerId);
   const currentBowler = getPlayer(currentInnings.currentBowlerId);
 
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastFailedBall, setLastFailedBall] = useState<BallInput | null>(null);
+
   const triggerCelebration = (
     type: CelebrationType,
     title?: string,
@@ -144,55 +149,96 @@ export default function ScorerScreen() {
     setCelebrationVisible(true);
   };
 
-  const commitDelivery = async (input: BallInput) => {
+  const commitDelivery = async (input: BallInput): Promise<void> => {
     try {
       const strikerId = currentInnings.currentStrikerId;
       const prevRuns = (strikerId && currentInnings.batterStats[strikerId]?.runs) || 0;
 
-      await recordDelivery(input);
+      setSaveStatus('saving');
+      const outcome = await recordDelivery(input);
+      setSaveStatus('saved');
+      setSaveError(null);
+      setLastFailedBall(null);
 
-      // Trigger Celebration & Haptic Milestone Alerts
-      const addedRuns = input.runsBat || 0;
-      const newRuns = prevRuns + addedRuns;
-
-      if (prevRuns < 50 && newRuns >= 50) {
-        triggerCelebration(
-          'fifty',
-          'HALF CENTURY! 50*',
-          `${striker?.name || 'Batter'} brings up a sensational half-century!`
-        );
-        CricketHaptics.milestone();
-      } else if (prevRuns < 100 && newRuns >= 100) {
-        triggerCelebration(
-          'hundred',
-          'CENTURY! 100*',
-          `What a masterclass! Century reached by ${striker?.name || 'Batter'}!`
-        );
-        CricketHaptics.milestone();
-      } else if (input.isSix) {
-        triggerCelebration(
-          'six',
-          'MAXIMUM 6!',
-          `${striker?.name || 'Batter'} launches it into the stands!`
-        );
-      } else if (input.isBoundary) {
-        triggerCelebration(
-          'four',
-          'CRACKING FOUR!',
-          `${striker?.name || 'Batter'} finds the boundary rope!`
-        );
+      // A2: Handle outcome warnings (e.g. negated dismissal on No-Ball or Free Hit)
+      if (outcome.warning) {
+        Alert.alert('Notice', outcome.warning);
       }
 
-      // Check if legal ball just finished an over
-      const willBeLegal = input.extraType !== 'wide' && input.extraType !== 'noBall';
-      if (willBeLegal && (currentInnings.legalBallsBowled + 1) % 6 === 0) {
-        // Over finished! Prompt for next bowler
+      // Handle Wicket: ONLY celebrate & prompt replacement if authoritative outcome confirms valid wicket!
+      if (outcome.isWicket && outcome.wicketValid) {
+        triggerCelebration(
+          'wicket',
+          'WICKET DOWN!',
+          `${getPlayer(outcome.dismissedPlayerId || '')?.name || 'Batter'} dismissed`
+        );
+        CricketHaptics.wicket();
+
+        if (outcome.vacantSlot && !outcome.isInningsComplete) {
+          setBatterSlotToSelect(outcome.vacantSlot);
+          setBatterModalVisible(true);
+        }
+      } else {
+        // Milestone and boundary celebrations on fair, valid scoring
+        const addedRuns = input.runsBat || 0;
+        const newRuns = prevRuns + addedRuns;
+
+        if (prevRuns < 50 && newRuns >= 50) {
+          triggerCelebration(
+            'fifty',
+            'HALF CENTURY! 50*',
+            `${striker?.name || 'Batter'} brings up a sensational half-century!`
+          );
+          CricketHaptics.milestone();
+        } else if (prevRuns < 100 && newRuns >= 100) {
+          triggerCelebration(
+            'hundred',
+            'CENTURY! 100*',
+            `What a masterclass! Century reached by ${striker?.name || 'Batter'}!`
+          );
+          CricketHaptics.milestone();
+        } else if (input.isSix) {
+          triggerCelebration(
+            'six',
+            'MAXIMUM 6!',
+            `${striker?.name || 'Batter'} launches it into the stands!`
+          );
+        } else if (input.isBoundary) {
+          triggerCelebration(
+            'four',
+            'CRACKING FOUR!',
+            `${striker?.name || 'Batter'} finds the boundary rope!`
+          );
+        }
+      }
+
+      // Over finish prompt: ONLY if over is complete AND innings is not complete!
+      if (outcome.needsNewBowler) {
         setTimeout(() => {
           setBowlerModalVisible(true);
-        }, 300);
+        }, 350);
       }
     } catch (err: any) {
-      Alert.alert('Scoring Error', err.message);
+      setSaveStatus('failed');
+      setSaveError(err.message || 'Storage write failed');
+      setLastFailedBall(input);
+      Alert.alert('Storage Save Error', err.message);
+    }
+  };
+
+  const handleRetrySave = async () => {
+    if (lastFailedBall) {
+      await commitDelivery(lastFailedBall);
+    } else if (activeMatch) {
+      try {
+        setSaveStatus('saving');
+        await StorageService.saveMatch(activeMatch);
+        setSaveStatus('saved');
+        setSaveError(null);
+      } catch (err: any) {
+        setSaveStatus('failed');
+        setSaveError(err.message || 'Retry failed');
+      }
     }
   };
 
@@ -258,37 +304,19 @@ export default function ScorerScreen() {
       pitchCoord,
       pitchProvenance,
     };
-    const wasWicket = Boolean(finalBall.isWicket);
-    const dismissedPlayerId = finalBall.dismissedPlayerId;
 
     setShotModalVisible(false);
     setPendingBall(null);
     await commitDelivery(finalBall);
-
-    if (wasWicket && dismissedPlayerId) {
-      const dismissedSlot =
-        dismissedPlayerId === currentInnings.currentStrikerId ? 'striker' : 'nonStriker';
-      setBatterSlotToSelect(dismissedSlot);
-      setBatterModalVisible(true);
-    }
   };
 
   const handleSkipSector = async () => {
     if (!pendingBall) return;
     const finalBall = pendingBall;
-    const wasWicket = Boolean(finalBall.isWicket);
-    const dismissedPlayerId = finalBall.dismissedPlayerId;
 
     setShotModalVisible(false);
     setPendingBall(null);
     await commitDelivery(finalBall);
-
-    if (wasWicket && dismissedPlayerId) {
-      const dismissedSlot =
-        dismissedPlayerId === currentInnings.currentStrikerId ? 'striker' : 'nonStriker';
-      setBatterSlotToSelect(dismissedSlot);
-      setBatterModalVisible(true);
-    }
   };
 
   const handleConfirmWicket = async (params: {
@@ -298,16 +326,14 @@ export default function ScorerScreen() {
     runsBat: number;
   }) => {
     try {
-      CricketHaptics.wicket();
-      triggerCelebration(
-        'wicket',
-        params.dismissalType.includes('retired') ? 'BATTER RETIRED' : 'WICKET DOWN!',
-        `${getPlayer(params.dismissedPlayerId)?.name || 'Batter'} (${params.dismissalType.replace('_', ' ').toUpperCase()})`
-      );
-
       // CRIC-005: Model explicit retirement without manufacturing a delivery
       if (params.dismissalType === 'retired_hurt' || params.dismissalType === 'retired_out') {
         await retireBatter(params.dismissedPlayerId, params.dismissalType);
+        triggerCelebration(
+          'wicket',
+          params.dismissalType === 'retired_hurt' ? 'BATTER RETIRED HURT' : 'BATTER RETIRED OUT',
+          `${getPlayer(params.dismissedPlayerId)?.name || 'Batter'} vacates crease`
+        );
         const dismissedSlot =
           params.dismissedPlayerId === currentInnings.currentStrikerId ? 'striker' : 'nonStriker';
         setBatterSlotToSelect(dismissedSlot);
@@ -340,13 +366,8 @@ export default function ScorerScreen() {
         return;
       }
 
+      // commitDelivery authoritatively validates dismissal legality and updates replacements/celebrations
       await commitDelivery(wicketBall);
-
-      // After dismissal, determine which slot needs replacement
-      const dismissedSlot =
-        params.dismissedPlayerId === currentInnings.currentStrikerId ? 'striker' : 'nonStriker';
-      setBatterSlotToSelect(dismissedSlot);
-      setBatterModalVisible(true);
     } catch (err: any) {
       Alert.alert('Wicket Error', err.message);
     }
@@ -386,6 +407,48 @@ export default function ScorerScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Live Scoreboard Banner */}
         <ScoreboardBanner match={activeMatch} />
+
+        {/* Persistence Failure Banner */}
+        {saveStatus === 'failed' && (
+          <View style={styles.saveErrorBanner}>
+            <View style={styles.saveErrorContent}>
+              <Ionicons name="alert-circle" size={20} color="#EF4444" />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={styles.saveErrorTitle}>Storage Save Failed</Text>
+                <Text style={styles.saveErrorText}>
+                  {saveError || 'Match progress could not be written to persistent storage.'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.retrySaveButton} onPress={handleRetrySave}>
+              <Ionicons name="refresh" size={14} color="#FFF" />
+              <Text style={styles.retrySaveText}>Retry Save</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Persistence Status Pill */}
+        <View style={styles.saveStatusRow}>
+          <View style={styles.saveStatusPill}>
+            <View
+              style={[
+                styles.saveStatusDot,
+                saveStatus === 'saving'
+                  ? styles.saveStatusDotSaving
+                  : saveStatus === 'failed'
+                  ? styles.saveStatusDotFailed
+                  : styles.saveStatusDotSaved,
+              ]}
+            />
+            <Text style={styles.saveStatusLabel}>
+              {saveStatus === 'saving'
+                ? 'Saving ball...'
+                : saveStatus === 'failed'
+                ? 'Unsaved changes'
+                : 'Saved locally'}
+            </Text>
+          </View>
+        </View>
 
         {/* Free Hit Glowing Alert Banner */}
         {currentInnings.isFreeHit && (
@@ -1240,5 +1303,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  saveErrorBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#F87171',
+    borderRadius: 8,
+    padding: 10,
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  saveErrorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  saveErrorTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#991B1B',
+  },
+  saveErrorText: {
+    fontSize: 11,
+    color: '#B91C1C',
+    marginTop: 1,
+  },
+  retrySaveButton: {
+    backgroundColor: '#DC2626',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+  },
+  retrySaveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  saveStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginHorizontal: 12,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  saveStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 5,
+  },
+  saveStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  saveStatusDotSaved: {
+    backgroundColor: '#10B981',
+  },
+  saveStatusDotSaving: {
+    backgroundColor: '#F59E0B',
+  },
+  saveStatusDotFailed: {
+    backgroundColor: '#EF4444',
+  },
+  saveStatusLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
   },
 });

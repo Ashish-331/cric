@@ -8,6 +8,9 @@ import type {
   BattingHand,
   BowlingStyle,
   Tournament,
+  TournamentEntry,
+  TournamentEntryStatus,
+  TournamentSquadMember,
 } from '../types/cricket';
 import { DEFAULT_TEAMS, DEFAULT_JOIN_REQUESTS, createSampleMatch } from './defaultData';
 
@@ -47,6 +50,7 @@ const TEAMS_STORAGE_KEY = '@cric_teams_v1';
 const USER_PROFILE_KEY = '@cric_user_profile_v1';
 const JOIN_REQUESTS_KEY = '@cric_join_requests_v1';
 const TOURNAMENTS_STORAGE_KEY = '@cric_tournaments_v1';
+const TOURNAMENT_ENTRIES_STORAGE_KEY = '@cric_tournament_entries_v1';
 
 export interface UserProfile {
   id: string;
@@ -332,6 +336,11 @@ export class StorageService {
     await StorageService.saveTeams(updated);
   }
 
+  static async getTeamById(id: string): Promise<Team | undefined> {
+    const teams = await StorageService.getTeams();
+    return teams.find((t) => t.id === id);
+  }
+
   // Join Requests
   static async getJoinRequests(): Promise<JoinRequest[]> {
     try {
@@ -585,6 +594,194 @@ export class StorageService {
         err
       );
     }
+  }
+
+  static async lockTournamentSquad(id: string): Promise<Tournament | undefined> {
+    const tournament = await StorageService.getTournamentById(id);
+    if (!tournament) return undefined;
+    tournament.isSquadLocked = true;
+    tournament.squadLockDeadline = new Date().toISOString();
+    await StorageService.saveTournament(tournament);
+    return tournament;
+  }
+
+  // Tournament Entries & Canonical Squad Freezing (Parts B, C, D)
+  static async getTournamentEntries(tournamentId?: string): Promise<TournamentEntry[]> {
+    try {
+      const json = await AsyncStorage.getItem(TOURNAMENT_ENTRIES_STORAGE_KEY);
+      if (!json) return [];
+      const entries = JSON.parse(json) as TournamentEntry[];
+      if (tournamentId) {
+        return entries.filter((e) => e.tournamentId === tournamentId);
+      }
+      return entries;
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to read tournament entries: ${err.message}`,
+        'READ_FAILED',
+        TOURNAMENT_ENTRIES_STORAGE_KEY,
+        err
+      );
+    }
+  }
+
+  static async saveTournamentEntry(entry: TournamentEntry): Promise<void> {
+    try {
+      const all = await StorageService.getTournamentEntries();
+      const idx = all.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) {
+        all[idx] = entry;
+      } else {
+        all.unshift(entry);
+      }
+      await AsyncStorage.setItem(TOURNAMENT_ENTRIES_STORAGE_KEY, JSON.stringify(all));
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to save tournament entry: ${err.message}`,
+        'WRITE_FAILED',
+        TOURNAMENT_ENTRIES_STORAGE_KEY,
+        err
+      );
+    }
+  }
+
+  static async getTournamentEntryById(id: string): Promise<TournamentEntry | undefined> {
+    const all = await StorageService.getTournamentEntries();
+    return all.find((e) => e.id === id);
+  }
+
+  static async deleteTournamentEntry(id: string): Promise<void> {
+    try {
+      const all = await StorageService.getTournamentEntries();
+      const filtered = all.filter((e) => e.id !== id);
+      await AsyncStorage.setItem(TOURNAMENT_ENTRIES_STORAGE_KEY, JSON.stringify(filtered));
+    } catch (err: any) {
+      throw new StorageError(
+        `Failed to delete tournament entry: ${err.message}`,
+        'WRITE_FAILED',
+        TOURNAMENT_ENTRIES_STORAGE_KEY,
+        err
+      );
+    }
+  }
+
+  static async submitTournamentEntry(
+    tournamentId: string,
+    team: Team,
+    captainProfile?: UserProfile,
+    customSquad?: TournamentSquadMember[]
+  ): Promise<TournamentEntry> {
+    const squad: TournamentSquadMember[] =
+      customSquad && customSquad.length > 0
+        ? customSquad
+        : team.players.map((p, idx) => ({
+            playerId: p.id,
+            playerName: p.name,
+            role: p.role,
+            battingHand: p.battingHand || 'right',
+            isCaptain: idx === 0,
+            isWicketkeeper: p.role === 'wicketkeeper',
+            jerseyNumber: p.jerseyNumber,
+            phoneNumber: p.phoneNumber,
+            status: 'eligible' as const,
+            addedAt: Date.now(),
+          }));
+
+    const entry: TournamentEntry = {
+      id: `entry_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      tournamentId,
+      teamId: team.id,
+      teamName: team.name,
+      shortName: team.shortName,
+      primaryColor: team.primaryColor,
+      captainUserId: captainProfile?.id,
+      captainName: captainProfile?.name || team.players[0]?.name,
+      captainPhone: captainProfile?.phoneNumber,
+      status: 'submitted',
+      submittedAt: Date.now(),
+      squad,
+    };
+
+    await StorageService.saveTournamentEntry(entry);
+    return entry;
+  }
+
+  static async reviewTournamentEntry(
+    entryId: string,
+    status: TournamentEntryStatus,
+    reviewerUserId: string,
+    reason?: string
+  ): Promise<TournamentEntry> {
+    const entry = await StorageService.getTournamentEntryById(entryId);
+    if (!entry) {
+      throw new StorageError(`Tournament entry not found: ${entryId}`, 'NOT_FOUND', entryId);
+    }
+
+    entry.status = status;
+    entry.reviewedAt = Date.now();
+    if (status === 'rejected') {
+      entry.rejectionReason = reason;
+    } else if (status === 'changes_requested') {
+      entry.changesRequestedReason = reason;
+    }
+
+    await StorageService.saveTournamentEntry(entry);
+
+    if (status === 'approved') {
+      const tournament = await StorageService.getTournamentById(entry.tournamentId);
+      if (tournament) {
+        // Build frozen team snapshot from approved tournament squad members
+        const frozenPlayers: Player[] = entry.squad.map((sm) => ({
+          id: sm.playerId,
+          name: sm.playerName,
+          role: sm.role,
+          battingHand: sm.battingHand,
+          jerseyNumber: sm.jerseyNumber,
+          phoneNumber: sm.phoneNumber,
+          careerStats: {
+            matches: 0,
+            inningsBatted: 0,
+            runs: 0,
+            highestScore: 0,
+            average: 0,
+            strikeRate: 0,
+            fifties: 0,
+            hundreds: 0,
+            fours: 0,
+            sixes: 0,
+            wickets: 0,
+            oversBowled: 0,
+            maidens: 0,
+            runsConceded: 0,
+            bowlingAverage: 0,
+            bowlingEconomy: 0,
+            bestBowling: '0/0',
+            catches: 0,
+            stumpings: 0,
+            runOuts: 0,
+          },
+        }));
+
+        const frozenTeam: Team = {
+          id: entry.teamId,
+          name: entry.teamName,
+          shortName: entry.shortName,
+          primaryColor: entry.primaryColor,
+          players: frozenPlayers,
+        };
+
+        const existingTeamIdx = tournament.teams.findIndex((t) => t.id === entry.teamId);
+        if (existingTeamIdx >= 0) {
+          tournament.teams[existingTeamIdx] = frozenTeam;
+        } else {
+          tournament.teams.push(frozenTeam);
+        }
+
+        await StorageService.saveTournament(tournament);
+      }
+    }
+
+    return entry;
   }
 
   // Ghost Player Claiming & Phone Normalization

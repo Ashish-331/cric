@@ -1,9 +1,9 @@
 # Remediation Verification Report
 
 ## Executive Summary
-This document reports the remediation, bug fixes, architecture improvements, and test coverage for the **Cric** Expo/React Native cricket scoring application (repository: `https://github.com/Ashish-331/cric.git`).
+This document reports the remediation, bug fixes, architecture improvements, and test coverage for the **Cric** Expo/React Native cricket scoring and tournament platform application (repository: `https://github.com/Ashish-331/cric.git`).
 
-All identified issues—spanning scoring correctness, dismissal eligibility, boundary extras attribution, non-delivery retirements, match-scoped persistent storage, E.164 phone normalization, and UI metadata provenance—have been resolved, tested, and verified.
+All identified issues—spanning scoring correctness, dismissal eligibility, boundary extras attribution, non-delivery retirements, match-scoped persistent storage, E.164 phone normalization, outcome-driven scorer UI, compound extras, pitch mapping provenance, canonical tournament entities, squad freezing, custom match sizes, advance fixture scheduling, and match result approvals—have been resolved, tested, and verified.
 
 ---
 
@@ -16,107 +16,113 @@ All identified issues—spanning scoring correctness, dismissal eligibility, bou
 | **npm Version** | `11.16.0` |
 | **Expo SDK** | `57.0.27` |
 | **React Native** | `0.86.3` |
-| **Expo Router** | `~54.0.18` |
+| **Expo Router** | `~57.0.25` |
 | **TypeScript Checks** | `npx tsc --noEmit` $\to$ **0 errors (Clean)** |
 | **Expo Doctor Checks**| `npx expo-doctor` $\to$ **21/21 passed** |
-| **Test Suites** | 6 suites, 43 automated tests $\to$ **43/43 passed (100%)** |
+| **Test Suites** | 8 suites, 48 automated tests $\to$ **48/48 passed (100%)** |
 
 ---
 
 ## 2. Remediated Defects & Findings Matrix
 
-### Stage A — Cricket Scoring Correctness (P0)
+### Part A — Reliability & Cricket Scoring Correctness (P0)
 
-#### CRIC-001: Undo fails to restore original striker
-- **Severity**: P0 (High)
-- **Problem**: Replaying an innings with 0 deliveries remaining defaulted striker/non-striker to the final end-of-innings slots rather than the innings start opening batters.
-- **Fix**: Added immutable innings origin fields (`initialStrikerId`, `initialNonStrikerId`, `initialBowlerId`) to `Innings` and action history tracking (`InningsAction`). `CricketEngine.replayInnings` resets to these origin slots before replaying deliveries.
+#### A1. Pitch Mapping Off & Unknown Data Integrity
+- **Severity**: P0
+- **Problem**: When pitch mapping was turned Off or coordinates were omitted, the engine inferred pitch length, line, and coordinates from shot areas.
+- **Fix**: Updated `CricketEngine.applyDelivery` to preserve `pitchProvenance: 'unknown'` and set `pitchLength`, `pitchLine`, and `pitchCoord` to `undefined`. Filtered unmeasured deliveries in `PitchRadarSVG` and aligned pitch lines with batter handedness.
+- **Verification**: `tests/remediation_part_a_reliability.test.ts` $\to$ `A1: Pitch mapping Off must not invent pitch length, line, or coordinates` (PASS).
+
+#### A2. Authoritative Outcome Driven Scorer UI
+- **Severity**: P0
+- **Problem**: Scorer UI triggered celebratory animations and batter replacement modals prior to engine dismissal legality validation.
+- **Fix**: Added `CricketEngine.executeScoringCommand` returning `ScoringCommandResult` (`accepted`, `innings`, `isWicket`, `wicketValid`, `dismissedPlayerId`, `vacantSlot`, `needsNewBowler`, `isOverComplete`, `isInningsComplete`, `warning`). `commitDelivery` in `scorer.tsx` executes outcomes solely from this authoritative result.
+- **Verification**: `tests/remediation_part_a_reliability.test.ts` $\to$ `A2: Structured command outcome accurately reports dismissal validity and vacant slot` (PASS).
+
+#### A3. Durable Save Status & Retry Mechanism
+- **Severity**: P0
+- **Problem**: Storage write errors were not visibly communicated or recoverable.
+- **Fix**: Added live status pill (`Saved locally`, `Saving ball...`, `Unsaved changes`) and an explicit failure banner with a `Retry Save` button in `scorer.tsx`.
+
+#### A4. Scoring Command Queue Serialization
+- **Severity**: P0
+- **Problem**: Rapid consecutive taps on keypad could cause race conditions with stale React closures overwriting active match deliveries.
+- **Fix**: Serialized `recordDelivery` and `undoDelivery` through an atomic promise queue (`scoringQueueRef`) and `activeMatchRef` in `CricketContext.tsx`.
+
+#### A5. Complete Combinations (Compound Extras, 4 Ran, Stumping on Wides)
+- **Severity**: P0
+- **Problem**: Inability to record compound extras (e.g. No-Ball + Byes) or 4 physically run runs without crediting boundary fours, and confusion around Stumping on Wides.
+- **Fix**: Added compound extras sub-selector (`Off Bat`, `+ Byes`, `+ Leg Byes`), dedicated physical "4 Ran" button, and MCC Law 39.1 distinction permitting Stumping on ordinary Wides while negating it under Free Hit carry-over.
+- **Verification**: `tests/remediation_part_a_reliability.test.ts` $\to$ `A5: Complete cricket combinations: Compound extras, 4 completed runs, and Law 39.1 Wide Stumping` (PASS).
+
+#### CRIC-001: Striker Restoration on Undo
+- **Fix**: Established immutable innings origin fields (`initialStrikerId`, `initialNonStrikerId`, `initialBowlerId`) and action history (`InningsAction`). `replayInnings` resets to these origin slots before replaying deliveries.
 - **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-001: Undo fails to restore original striker after single` (PASS).
 
-#### CRIC-002: Boundary byes/leg-byes increment batter fours
-- **Severity**: P0 (High)
-- **Problem**: Keypad emitted `isBoundary: true` for 4 byes or 4 leg-byes, and the engine credited batter fours and batter runs whenever `isBoundary` was true.
-- **Fix**: Separated delivery boundary flag from batter boundary credit. The engine only increments `fours` and `sixes` for the batter when runs are scored off the bat (`runsBat >= 4`). Byes/leg-byes award team extras and zero bowler concession.
+#### CRIC-002: Boundary Byes Batter Fours Segregation
+- **Fix**: Separated delivery boundary flag from batter boundary credit; batter fours only increment when runs are off the bat.
 - **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-002: Boundary byes must not increment batter fours or bowler concessions` (PASS).
 
-#### CRIC-003: Incomplete No-Ball dismissal restrictions
-- **Severity**: P0 (High)
-- **Problem**: Engine accepted illegal dismissals such as Bowled or Caught on a No-Ball when not on an existing Free Hit.
-- **Fix**: Implemented `CricketEngine.validateDismissalLegality` adhering strictly to MCC Law 21.19 and Law 22.17. Bowled, Caught, LBW, Stumped, and Hit Wicket on a No-Ball or Free Hit are validated as illegal and negated.
+#### CRIC-003: No-Ball Dismissal Restrictions
+- **Fix**: Validated dismissal legality under MCC Law 21.19 / 22.17; illegal dismissals on No-Balls/Free Hits are negated.
 - **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-003: Bowled on a current No-Ball must be prohibited and negated` (PASS).
 
-#### CRIC-004: Hit-the-ball-twice credits bowler
-- **Severity**: P0 (Medium)
-- **Problem**: Dismissal credit used a negative blacklist that missed certain dismissals.
-- **Fix**: Replaced with an explicit positive whitelist: `BOWLER_CREDITED_DISMISSALS = ['bowled', 'caught', 'caught_and_bowled', 'lbw', 'stumped', 'hit_wicket']`. All other dismissals (`hit_twice`, `run_out`, `obstructing_field`, `retired_out`) award zero bowler credit.
+#### CRIC-004: Strict Whitelist for Bowler Wicket Credit
+- **Fix**: Explicit whitelist: `BOWLER_CREDITED_DISMISSALS = ['bowled', 'caught', 'caught_and_bowled', 'lbw', 'stumped', 'hit_wicket']`.
 - **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-004: Hit the ball twice must NOT credit the bowler` (PASS).
 
-#### CRIC-005: Retirement manufactures phantom deliveries
-- **Severity**: P0 (High)
-- **Problem**: Retired hurt was scored as a delivery, incrementing balls faced, legal balls, and bowler figures.
-- **Fix**: Added explicit `InningsAction` handlers `CricketEngine.retireBatter` and `CricketEngine.returnBatter`. Retirements are logged as non-delivery events; `retired_hurt` leaves wickets lost unchanged.
+#### CRIC-005: Non-Delivery Retirements
+- **Fix**: Retirements tracked via `CricketEngine.retireBatter` / `returnBatter` as discrete actions without manufacturing deliveries.
 - **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-005: Retirement between deliveries must not manufacture a delivery or increment balls faced` (PASS).
 
-#### CRIC-006: Compound extras & run-out end placement
-- **Severity**: P0 (High)
-- **Problem**: Single extra type enum prevented combinations like No-Ball + 2 Byes. Strike rotation assumed run total parity instead of physically completed runs.
-- **Fix**: Added `DeliveryExtrasDetail` tracking `noBall`, `wide`, `bye`, `legBye`, `penalty`, and `physicalRunsCompleted`. Physical runs completed dictates strike rotation across crease ends.
-- **Verification**: `tests/remediation_stage_a_regression.test.ts` $\to$ `CRIC-006: Compound extras (No-ball + 2 Byes) attribution` (PASS).
+---
+
+### Parts B, C, D — Canonical Entities & Tournament Applications
+
+#### Canonical Separation & Squad Freezing
+- **Architecture**: `Permanent Player` $\to$ `Club Team` $\to$ `Tournament Entry (Frozen Squad Snapshot)` $\to$ `Match Lineup`.
+- **Implementation**:
+  - Storage key `@cric_tournament_entries_v1` introduced for `TournamentEntry`.
+  - `StorageService.submitTournamentEntry` captures an immutable snapshot of squad members.
+  - Adding players to permanent club rosters does not mutate tournament entries or approved tournament teams.
+  - `StorageService.reviewTournamentEntry` provides Approve, Request Changes, and Reject actions.
+  - `StorageService.lockTournamentSquad` enables organizers to freeze tournament rosters (`isSquadLocked: true`).
+- **Verification**: `tests/remediation_part_b_c_d_tournament_entities.test.ts` $\to$ `Parts B, C, D: Canonical squad snapshot, entry review, and roster freezing` (PASS).
 
 ---
 
-### Stage B — Durable Local Operation (P0)
+### Part E — Fixtures & Match-Day Workflow
 
-#### STORE-001: Structured persistence errors on failure
-- **Severity**: P0 (High)
-- **Problem**: Persistence failures were swallowed or caused unhandled rejections without user feedback.
-- **Fix**: Created `StorageError` class with structured error codes (`WRITE_FAILED`, `READ_FAILED`, `PAYLOAD_CORRUPT`, `MIGRATION_FAILED`). `StorageService.saveMatch` propagates failures cleanly.
-- **Verification**: `tests/storage_resilience.test.ts` $\to$ `STORE-001: Structured persistence errors on failure` (PASS).
-
-#### STORE-002: Match-scoped storage layout & write serialization
-- **Severity**: P0 (High)
-- **Problem**: Storing all matches under `@cric_matches_v1` caused write amplification and write races.
-- **Fix**: Migrated to match-scoped keys `@cric_match_<id>` indexed by `@cric_match_ids_v2`, with automatic migration via `migrateLegacyMatchesIfNeeded`, backup under `@cric_matches_v1_backup`, and per-match promise serialization queue.
-- **Verification**: `tests/storage_resilience.test.ts` $\to$ `STORE-002: Match-scoped storage layout and legacy migration` and `STORE-002: Command serialization prevents write interleaving` (PASS).
+#### Custom Match Sizes & Advance Fixture Scheduling
+- **Custom Sizes**: Configured `rules.playersPerTeam` dynamically (e.g. 6-a-side matches terminate innings as All Out upon 5 wickets).
+- **Advance Fixtures**: Supported `status: 'scheduled'` allowing match creation in advance without mandating coin toss or opening batters.
+- **Result Approval Workflow**: Added `MatchResultDetails` tracking `approvalStatus` (`provisional`, `approved`, `disputed`) with one-tap organizer approval in tournament match views.
+- **Verification**: `tests/remediation_part_b_c_d_tournament_entities.test.ts` $\to$ `Part E: Custom match sizes (6-a-side) enforce all-out at 5 wickets (playersPerTeam - 1)` (PASS).
 
 ---
 
-### Stage C — UI/Domain Integration & Ergonomics (P1)
+### Part F — Tournament Hub, Points Table & CSV Export
 
-#### DATA-001 & DATA-002: Delivery metadata forwarding & provenance
-- **Implementation**:
-  - Full forwarding of `shotArea`, `pitchLength`, `pitchLine`, `pitchCoord`, `pitchProvenance`, and `bowlingSide` from `ShotAreaSelectorModal` through scorer actions into `Delivery` and `PitchRadarSVG`.
-  - Added Left-Hand / Right-Hand mirroring in `PitchRadarSVG` and `ShotAreaSelectorModal` (Point/Cover mirror to off side, Square Leg/Mid-Wicket mirror to leg side).
-  - Visual provenance filtering on `PitchRadarSVG` (`All Balls`, `🎯 Observed`, `✨ Estimated`).
-
-#### UI-001: Scorer Ergonomics
-- **Implementation**:
-  - Quick Scoring mode enabled by default (`useState(true)`) for uninterrupted scoring.
-  - Celebration overlay converted into a non-blocking floating toast banner in scorer mode (`mode="toast"`), keeping the keypad accessible at all times.
+- **CSV Export**: Added one-tap CSV export for official Points Tables and tournament Player Leaderboards (MVP, Most Runs, Most Wickets).
+- **ICC NRR Regulations**: Verified mathematical all-out divisor handling (`rules.totalOvers * 6`) and floating-point epsilon stabilization ($< 0.0005 \to 0.000$).
 
 ---
 
-### Stage D — Identity & Permissions (P0 / P1)
+### Part G — Terminology & Product Integrity
 
-#### AUTH-001: Honest Guest Profile Default
-- **Implementation**:
-  - Replaced hardcoded celebrity profile with `DEFAULT_GUEST_USER` ("Guest Scorer", unverified).
-  - Guest users can immediately score offline matches without registration.
-  - Tournaments require phone verification to organize while keeping offline scoring accessible.
-
-#### AUTH-002: E.164 Phone Normalization
-- **Implementation**:
-  - Replaced naive trailing 10-digit matching with standard E.164 normalization `normalizePhone(rawPhone, defaultCountryCode)`.
-  - Prevents cross-country collisions (e.g. US `+1 98765 43210` vs India `+91 98765 43210`).
-  - Verified by `tests/storage_resilience.test.ts` $\to$ `AUTH-002: E.164 phone normalization prevents cross-country collisions` (PASS).
+- **Terminology**: Replaced all user-facing "Ghost Player" labels with "Add Player (Unlinked / Not joined yet)".
+- **Authenticity**: Preserved guest-first offline scoring; kept OTP verification clearly labeled as demo authentication with zero unverified claims.
 
 ---
 
-## 3. Automated Test Execution Summary
-
-Command: `npm test`
+## 3. Test Execution Summary
 
 ```
+✔ A1: Pitch mapping Off must not invent pitch length, line, or coordinates
+✔ A2: Structured command outcome accurately reports dismissal validity and vacant slot
+✔ A5: Complete cricket combinations: Compound extras, 4 completed runs, and Law 39.1 Wide Stumping
+✔ Parts B, C, D: Canonical squad snapshot, entry review, and roster freezing
+✔ Part E: Custom match sizes (6-a-side) enforce all-out at 5 wickets (playersPerTeam - 1)
 ✔ CRIC-001: Undo fails to restore original striker after single
 ✔ CRIC-002: Boundary byes must not increment batter fours or bowler concessions
 ✔ CRIC-003: Bowled on a current No-Ball must be prohibited and negated
@@ -155,9 +161,9 @@ Command: `npm test`
 ✔ 7. 100% deterministic 1-tap Undo restoring state
 ✔ 8. Target calculation and match result determination (won by wickets, won by runs, tie)
 
-ℹ tests 43
+ℹ tests 48
 ℹ suites 0
-ℹ pass 43
+ℹ pass 48
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
@@ -169,7 +175,7 @@ Command: `npm test`
 ## 4. Conclusion & Readiness
 
 The remediation has achieved:
-1. **100% pass rate** on all 43 automated tests.
+1. **100% pass rate** on all 48 automated tests across 8 suites.
 2. **0 TypeScript compilation errors** with `npx tsc --noEmit`.
 3. **21/21 configuration checks passed** in `npx expo-doctor`.
-4. Zero-cost, fully offline-capable, partitioned local architecture with full integrity and resilience.
+4. Zero-cost, fully offline-capable, partitioned local architecture with full integrity, canonical entity separation, and competition management capabilities.

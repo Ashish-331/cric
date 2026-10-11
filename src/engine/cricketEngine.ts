@@ -18,6 +18,7 @@ import type {
   PitchCoordinate,
   PitchProvenance,
   BattingHand,
+  ScoringCommandResult,
 } from '../types/cricket';
 
 export const BOWLER_CREDITED_DISMISSALS: readonly DismissalType[] = [
@@ -558,6 +559,81 @@ export class CricketEngine {
   }
 
   /**
+   * Authoritative scoring command executor (A2: accepted, validated outcome).
+   * Validates dismissal legality, applies delivery, and returns rich structured command outcome.
+   */
+  static executeScoringCommand(
+    innings: Innings,
+    delivery: Delivery,
+    rules: MatchRules,
+    targetRuns?: number,
+    commentaryContext?: CommentaryContext
+  ): ScoringCommandResult {
+    const wasFreeHit = Boolean(innings.isFreeHit);
+    const isNoBallDelivery = delivery.extraType === 'noBall' || Boolean(delivery.extrasDetail?.noBall);
+    const isWideDelivery = delivery.extraType === 'wide' || Boolean(delivery.extrasDetail?.wide);
+
+    let wicketValid = true;
+    let legalityWarning: string | undefined;
+
+    if (delivery.isWicket && delivery.wicketDetails) {
+      const legality = validateDismissalLegality(delivery.wicketDetails.dismissalType, {
+        isNoBall: isNoBallDelivery,
+        isWide: isWideDelivery,
+        isFreeHit: wasFreeHit,
+      });
+      if (!legality.isLegal) {
+        wicketValid = false;
+        legalityWarning = legality.reason;
+      }
+    }
+
+    // Apply delivery to compute authoritative next innings state
+    const updatedInnings = CricketEngine.applyDelivery(
+      innings,
+      delivery,
+      rules,
+      targetRuns,
+      commentaryContext
+    );
+
+    const isWicketEffective = Boolean(delivery.isWicket && wicketValid);
+    const dismissedPlayerId = isWicketEffective
+      ? delivery.wicketDetails?.playerDismissedId
+      : undefined;
+
+    const isLegal = delivery.isLegalDelivery;
+    const isOverComplete =
+      isLegal && updatedInnings.legalBallsBowled > 0 && updatedInnings.legalBallsBowled % 6 === 0;
+    const isInningsComplete = updatedInnings.isCompleted;
+    const needsNewBowler = isOverComplete && !isInningsComplete;
+
+    let vacantSlot: 'striker' | 'nonStriker' | null = null;
+    if (isWicketEffective && dismissedPlayerId && !isInningsComplete) {
+      if (dismissedPlayerId === updatedInnings.currentStrikerId || !updatedInnings.currentStrikerId) {
+        vacantSlot = 'striker';
+      } else if (dismissedPlayerId === updatedInnings.currentNonStrikerId || !updatedInnings.currentNonStrikerId) {
+        vacantSlot = 'nonStriker';
+      } else {
+        vacantSlot = 'striker';
+      }
+    }
+
+    return {
+      accepted: true,
+      innings: updatedInnings,
+      isWicket: isWicketEffective,
+      wicketValid,
+      dismissedPlayerId,
+      vacantSlot,
+      needsNewBowler,
+      isOverComplete,
+      isInningsComplete,
+      warning: legalityWarning,
+    };
+  }
+
+  /**
    * Processes a single delivery and returns the updated Innings state.
    */
   static applyDelivery(
@@ -677,6 +753,14 @@ export class CricketEngine {
         isOut: false,
         battingOrder: order,
       };
+    }
+
+    // If crease slots were vacant (e.g. following previous dismissal), initialize from delivery participants
+    if (!updated.currentStrikerId && strikerId) {
+      updated.currentStrikerId = strikerId;
+    }
+    if (!updated.currentNonStrikerId && nonStrikerId) {
+      updated.currentNonStrikerId = nonStrikerId;
     }
     if (!updated.bowlerStats[bowlerId]) {
       updated.bowlerStats[bowlerId] = {
@@ -806,17 +890,27 @@ export class CricketEngine {
       updated.isFreeHit = false;
     }
 
-    // Pitch Length, Line & Coordinate mapping
-    if (delivery.pitchLength) {
+    // Pitch Length, Line & Coordinate mapping (A1: Honour Off and unknown data)
+    if (delivery.pitchProvenance === 'unknown' || (!delivery.pitchLength && !delivery.pitchCoord)) {
+      // Explicitly preserve Off / unknown as having no pitch observation
+      delivery.pitchLength = undefined;
+      delivery.pitchLine = undefined;
+      delivery.pitchCoord = undefined;
+      if (!delivery.pitchProvenance) {
+        delivery.pitchProvenance = 'unknown';
+      }
+    } else if (delivery.pitchLength) {
       delivery.pitchLine = delivery.pitchLine || 'on_stumps';
       if (!delivery.pitchCoord) {
         delivery.pitchCoord = derivePitchMapping(shotArea, runsBat, isBoundary, isSix).pitchCoord;
       }
-    } else if (shotArea || isBoundary || isSix) {
-      const autoMap = derivePitchMapping(shotArea, runsBat, isBoundary, isSix);
-      delivery.pitchLength = autoMap.pitchLength;
-      delivery.pitchLine = autoMap.pitchLine;
-      delivery.pitchCoord = autoMap.pitchCoord;
+      if (!delivery.pitchProvenance) {
+        delivery.pitchProvenance = 'observed';
+      }
+    } else if (delivery.pitchCoord) {
+      if (!delivery.pitchProvenance) {
+        delivery.pitchProvenance = 'observed';
+      }
     }
 
     // Calculate balls without boundary in current innings

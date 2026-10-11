@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
-import { Tournament, Team, Match, Player } from '../../types/cricket';
+import { Tournament, Team, Match, Player, TournamentEntry } from '../../types/cricket';
 import { formatOvers } from '../../engine/cricketEngine';
 import { Colors } from '../../utils/colors';
 
@@ -58,14 +59,35 @@ export default function TournamentDetailScreen() {
     getTournamentById,
     addTeamToTournament,
     userProfile,
+    tournamentEntries,
+    loadTournamentEntries,
+    submitTournamentEntry,
+    reviewTournamentEntry,
+    lockTournamentSquad,
+    updateMatchResultApproval,
   } = useCricket();
 
-  const [activeTab, setActiveTab] = useState<'standings' | 'matches' | 'leaderboard' | 'teams'>('standings');
+  const [activeTab, setActiveTab] = useState<'standings' | 'matches' | 'leaderboard' | 'teams' | 'applications'>('standings');
   const [addTeamModalVisible, setAddTeamModalVisible] = useState(false);
+  const [applyTeamModalVisible, setApplyTeamModalVisible] = useState(false);
+  const [csvModalVisible, setCsvModalVisible] = useState(false);
+  const [csvData, setCsvData] = useState({ title: '', content: '' });
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (id) {
+      loadTournamentEntries(id);
+    }
+  }, [id, loadTournamentEntries]);
 
   const tournament = useMemo(() => {
     return tournaments.find((t) => t.id === id) || getTournamentById(id || '');
   }, [tournaments, id, getTournamentById]);
+
+  const currentEntries = useMemo(() => {
+    if (!tournament) return [];
+    return tournamentEntries.filter((e) => e.tournamentId === tournament.id);
+  }, [tournamentEntries, tournament]);
 
   // Matches belonging to this tournament
   const tournamentMatches = useMemo(() => {
@@ -372,6 +394,79 @@ export default function TournamentDetailScreen() {
     });
   };
 
+  const handleApplyTeam = async (team: Team) => {
+    try {
+      if (tournament?.isSquadLocked) {
+        Alert.alert('Registration Closed', 'Tournament squads have been locked.');
+        return;
+      }
+      await submitTournamentEntry(tournament.id, team);
+      setApplyTeamModalVisible(false);
+      Alert.alert('Application Submitted', `${team.name} entry submitted with squad snapshot for organizer review.`);
+    } catch (err: any) {
+      Alert.alert('Application Error', err.message);
+    }
+  };
+
+  const handleReviewEntry = async (entryId: string, status: 'approved' | 'rejected' | 'changes_requested') => {
+    try {
+      await reviewTournamentEntry(entryId, status);
+      Alert.alert('Application Updated', `Application marked as ${status}.`);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
+  };
+
+  const handleLockSquads = async () => {
+    Alert.alert(
+      'Lock Tournament Squads?',
+      'Once locked, team squads cannot be changed without organizer approval.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Lock',
+          style: 'destructive',
+          onPress: async () => {
+            await lockTournamentSquad(tournament.id);
+            Alert.alert('Squads Locked', 'Official tournament rosters are now frozen.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleExportStandingsCSV = () => {
+    if (!standings.length) {
+      Alert.alert('No Data', 'No standings data to export.');
+      return;
+    }
+    const header = 'Rank,Team,Played,Won,Lost,Tied,No Result,Points,NRR,Runs Scored,Overs Faced,Runs Conceded,Overs Bowled\n';
+    const rows = standings
+      .map(
+        (s, i) =>
+          `${i + 1},"${s.team.name.replace(/"/g, '""')}",${s.played},${s.won},${s.lost},${s.tied},${s.noResult},${s.points},${s.nrr},${s.runsScored},${s.oversFacedDecimal.toFixed(1)},${s.runsConceded},${s.oversBowledDecimal.toFixed(1)}`
+      )
+      .join('\n');
+    setCsvData({ title: `${tournament.name} - Points Table CSV`, content: header + rows });
+    setCsvModalVisible(true);
+  };
+
+  const handleExportLeaderboardCSV = () => {
+    const header = 'Category,Rank,Player,Team,Score / Metric\n';
+    const batterRows = topBatters
+      .map((b, i) => `"Most Runs",${i + 1},"${b.player.name.replace(/"/g, '""')}","${b.team.name.replace(/"/g, '""')}",${b.runs} runs`)
+      .join('\n');
+    const bowlerRows = topBowlers
+      .map((b, i) => `"Most Wickets",${i + 1},"${b.player.name.replace(/"/g, '""')}","${b.team.name.replace(/"/g, '""')}",${b.wickets} wickets`)
+      .join('\n');
+    const mvpRows = topMVP
+      .map((m, i) => `"MVP",${i + 1},"${m.player.name.replace(/"/g, '""')}","${m.team.name.replace(/"/g, '""')}",${m.mvpPoints} pts`)
+      .join('\n');
+    const content = `${header}${batterRows}\n${bowlerRows}\n${mvpRows}`;
+    setCsvData({ title: `${tournament.name} - Leaderboards CSV`, content });
+    setCsvModalVisible(true);
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -386,6 +481,11 @@ export default function TournamentDetailScreen() {
                 <View style={styles.formatBadge}>
                   <Text style={styles.formatBadgeText}>{tournament.format.toUpperCase()} • {tournament.totalOvers} OV</Text>
                 </View>
+                {tournament.isSquadLocked && (
+                  <View style={styles.lockedBadge}>
+                    <Text style={styles.lockedBadgeText}>🔒 ROSTERS LOCKED</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.tournamentName}>{tournament.name}</Text>
               <Text style={styles.organizerText}>
@@ -413,7 +513,7 @@ export default function TournamentDetailScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Sub-Tabs: Standings | Matches | Leaderboard | Teams */}
+        {/* Sub-Tabs: Standings | Matches | Leaderboard | Teams | Applications */}
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tabItem, activeTab === 'standings' && styles.tabItemActive]}
@@ -450,15 +550,32 @@ export default function TournamentDetailScreen() {
               Teams ({tournament.teams.length})
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'applications' && styles.tabItemActive]}
+            onPress={() => setActiveTab('applications')}
+          >
+            <Text style={[styles.tabItemText, activeTab === 'applications' && styles.tabItemTextActive]}>
+              Entries ({currentEntries.length})
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Tab 1: Points Table & Net Run Rate */}
         {activeTab === 'standings' && (
           <View style={styles.cardContainer}>
-            <Text style={styles.sectionHeading}>Official Tournament Points Table</Text>
-            <Text style={styles.subtext}>
-              Points: Win = 2, Tie/NR = 1 • NRR = (Runs/Ov Faced) - (Runs/Ov Bowled)
-            </Text>
+            <View style={styles.sectionHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionHeading}>Official Tournament Points Table</Text>
+                <Text style={styles.subtext}>
+                  Points: Win = 2, Tie/NR = 1 • NRR = (Runs/Ov Faced) - (Runs/Ov Bowled)
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.csvExportBtn} onPress={handleExportStandingsCSV}>
+                <Ionicons name="download-outline" size={14} color="#0284C7" />
+                <Text style={styles.csvExportBtnText}>Export CSV</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.tableHeader}>
               <Text style={[styles.th, { flex: 2 }]}>TEAM</Text>
@@ -548,6 +665,65 @@ export default function TournamentDetailScreen() {
                   <Text style={styles.matchResultText}>{m.result}</Text>
                 ) : null}
 
+                {m.status === 'completed' && (
+                  <View style={styles.resultApprovalContainer}>
+                    <View
+                      style={[
+                        styles.approvalBadge,
+                        m.resultDetails?.approvalStatus === 'approved'
+                          ? styles.approvalBadgeApproved
+                          : m.resultDetails?.approvalStatus === 'disputed'
+                          ? styles.approvalBadgeDisputed
+                          : styles.approvalBadgeProvisional,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.approvalBadgeText,
+                          m.resultDetails?.approvalStatus === 'approved'
+                            ? styles.approvalTextApproved
+                            : m.resultDetails?.approvalStatus === 'disputed'
+                            ? styles.approvalTextDisputed
+                            : styles.approvalTextProvisional,
+                        ]}
+                      >
+                        {m.resultDetails?.approvalStatus === 'approved'
+                          ? '✓ APPROVED'
+                          : m.resultDetails?.approvalStatus === 'disputed'
+                          ? '⚠️ DISPUTED'
+                          : 'PROVISIONAL'}
+                      </Text>
+                    </View>
+
+                    {m.resultDetails?.approvalStatus !== 'approved' && (
+                      <View style={styles.organizerReviewBtns}>
+                        <TouchableOpacity
+                          style={styles.approveSmallBtn}
+                          onPress={async () => {
+                            await updateMatchResultApproval(m.id, 'approved', { summary: m.result });
+                            Alert.alert('Approved', 'Official match result approved.');
+                          }}
+                        >
+                          <Ionicons name="checkmark-circle" size={12} color="#FFF" />
+                          <Text style={styles.approveSmallText}>Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.disputeSmallBtn}
+                          onPress={async () => {
+                            await updateMatchResultApproval(m.id, 'disputed', {
+                              disputeReason: 'Scorecard disputed by participating team',
+                            });
+                            Alert.alert('Dispute Logged', 'Match result marked under dispute.');
+                          }}
+                        >
+                          <Ionicons name="alert-circle" size={12} color="#DC2626" />
+                          <Text style={styles.disputeSmallText}>Dispute</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 <View style={styles.matchActionsRow}>
                   {m.status !== 'completed' && m.status !== 'abandoned' ? (
                     <TouchableOpacity
@@ -583,6 +759,17 @@ export default function TournamentDetailScreen() {
         {/* Tab 3: Dynamic Leaderboards */}
         {activeTab === 'leaderboard' && (
           <View style={styles.leaderboardsContainer}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionHeading}>Official Tournament Leaderboards</Text>
+                <Text style={styles.subtext}>Live statistics across all completed tournament matches</Text>
+              </View>
+              <TouchableOpacity style={styles.csvExportBtn} onPress={handleExportLeaderboardCSV}>
+                <Ionicons name="download-outline" size={14} color="#0284C7" />
+                <Text style={styles.csvExportBtnText}>Export CSV</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* MVP Leaderboard */}
             <View style={styles.leaderboardCard}>
               <View style={styles.cardTitleRow}>
@@ -735,6 +922,155 @@ export default function TournamentDetailScreen() {
             ))}
           </View>
         )}
+
+        {/* Tab 5: Team Applications & Squad Freezing */}
+        {activeTab === 'applications' && (
+          <View style={styles.teamsTabContainer}>
+            <View style={styles.matchesHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionHeading}>Team Applications ({currentEntries.length})</Text>
+                <Text style={styles.subtext}>
+                  {tournament.isSquadLocked
+                    ? '🔒 Squads are locked. Amendments require organizer approval.'
+                    : 'Captain-submitted tournament entries with frozen squad snapshots.'}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                {!tournament.isSquadLocked && (
+                  <TouchableOpacity
+                    style={[styles.addMatchSmallBtn, { backgroundColor: '#B45309' }]}
+                    onPress={handleLockSquads}
+                  >
+                    <Ionicons name="lock-closed" size={12} color="#FFF" />
+                    <Text style={styles.addMatchSmallBtnText}>Lock Squads</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.addMatchSmallBtn}
+                  onPress={() => setApplyTeamModalVisible(true)}
+                >
+                  <Ionicons name="paper-plane" size={12} color="#FFF" />
+                  <Text style={styles.addMatchSmallBtnText}>Apply Team</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {currentEntries.map((entry) => (
+              <View key={entry.id} style={styles.entryCard}>
+                <View style={styles.entryHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.entryTeamName}>{entry.teamName}</Text>
+                    <Text style={styles.entryCaptainSub}>
+                      Captain: {entry.captainName || 'Team Captain'} • {entry.squad.length} Squad Members
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.entryStatusBadge,
+                      entry.status === 'approved'
+                        ? styles.entryBadgeApproved
+                        : entry.status === 'rejected'
+                        ? styles.entryBadgeRejected
+                        : entry.status === 'changes_requested'
+                        ? styles.entryBadgeChanges
+                        : styles.entryBadgeSubmitted,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.entryStatusText,
+                        entry.status === 'approved'
+                          ? styles.entryStatusTextApproved
+                          : entry.status === 'rejected'
+                          ? styles.entryStatusTextRejected
+                          : entry.status === 'changes_requested'
+                          ? styles.entryStatusTextChanges
+                          : styles.entryStatusTextSubmitted,
+                      ]}
+                    >
+                      {entry.status.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Toggle squad member list */}
+                <TouchableOpacity
+                  style={styles.toggleSquadBtn}
+                  onPress={() =>
+                    setExpandedEntryId(expandedEntryId === entry.id ? null : entry.id)
+                  }
+                >
+                  <Ionicons
+                    name={expandedEntryId === entry.id ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color="#0284C7"
+                  />
+                  <Text style={styles.toggleSquadText}>
+                    {expandedEntryId === entry.id ? 'Hide Submitted Squad' : 'View Submitted Squad'}
+                  </Text>
+                </TouchableOpacity>
+
+                {expandedEntryId === entry.id && (
+                  <View style={styles.squadListContainer}>
+                    {entry.squad.map((sm, smIdx) => (
+                      <View key={sm.playerId} style={styles.squadMemberRow}>
+                        <Text style={styles.squadMemberRank}>{smIdx + 1}.</Text>
+                        <Text style={styles.squadMemberName}>
+                          {sm.playerName} {sm.isCaptain ? '(C)' : sm.isWicketkeeper ? '(WK)' : ''}
+                        </Text>
+                        <Text style={styles.squadMemberRole}>{sm.role.toUpperCase()}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Organizer review actions if submitted */}
+                {entry.status === 'submitted' && (
+                  <View style={styles.entryActionsRow}>
+                    <TouchableOpacity
+                      style={styles.approveEntryBtn}
+                      onPress={() => handleReviewEntry(entry.id, 'approved')}
+                    >
+                      <Ionicons name="checkmark-circle" size={14} color="#FFF" />
+                      <Text style={styles.approveEntryText}>Approve & Enroll</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.requestChangesBtn}
+                      onPress={() => handleReviewEntry(entry.id, 'changes_requested')}
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={14} color="#B45309" />
+                      <Text style={styles.requestChangesText}>Request Changes</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.rejectEntryBtn}
+                      onPress={() => handleReviewEntry(entry.id, 'rejected')}
+                    >
+                      <Ionicons name="close-circle" size={14} color="#DC2626" />
+                      <Text style={styles.rejectEntryText}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ))}
+
+            {currentEntries.length === 0 && (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>No tournament entries submitted yet.</Text>
+                <TouchableOpacity
+                  style={styles.scheduleMatchEmptyBtn}
+                  onPress={() => setApplyTeamModalVisible(true)}
+                >
+                  <Text style={styles.scheduleMatchEmptyText}>Submit First Team Application</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal: Enroll Team into Tournament */}
@@ -773,6 +1109,81 @@ export default function TournamentDetailScreen() {
               onPress={() => setAddTeamModalVisible(false)}
             >
               <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Apply Team into Tournament */}
+      <Modal visible={applyTeamModalVisible} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Apply Team to Tournament</Text>
+            <Text style={styles.modalSubtitle}>
+              Submit your team's current squad for organizer approval
+            </Text>
+
+            <ScrollView style={styles.teamPickerScroll}>
+              {allAvailableTeams
+                .filter((t) => !currentEntries.some((e) => e.teamId === t.id && e.status === 'approved'))
+                .map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.teamPickItem}
+                    onPress={() => handleApplyTeam(t)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.teamPickName}>{t.name}</Text>
+                      <Text style={styles.teamPickSub}>{t.players.length} players squad snapshot</Text>
+                    </View>
+                    <Ionicons name="paper-plane" size={20} color="#0284C7" />
+                  </TouchableOpacity>
+                ))}
+
+              {allAvailableTeams.filter(
+                (t) => !currentEntries.some((e) => e.teamId === t.id && e.status === 'approved')
+              ).length === 0 && (
+                <Text style={styles.emptyText}>All teams are already registered or approved.</Text>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setApplyTeamModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: CSV Export Viewer */}
+      <Modal visible={csvModalVisible} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={styles.modalTitle}>{csvData.title}</Text>
+              <TouchableOpacity onPress={() => setCsvModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>Copy or export formatted CSV data below:</Text>
+
+            <ScrollView style={[styles.teamPickerScroll, { maxHeight: 320 }]}>
+              <TextInput
+                style={styles.csvTextInput}
+                multiline
+                editable={false}
+                value={csvData.content}
+                selectTextOnFocus
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalCloseBtn, { backgroundColor: Colors.pitchGreen }]}
+              onPress={() => setCsvModalVisible(false)}
+            >
+              <Text style={[styles.modalCloseText, { color: '#FFF' }]}>Done</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1265,5 +1676,270 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontWeight: '700',
     fontSize: 13,
+  },
+  lockedBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#78350F',
+    marginLeft: 6,
+  },
+  lockedBadgeText: {
+    color: '#FEF3C7',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  csvExportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  csvExportBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  resultApprovalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  approvalBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  approvalBadgeApproved: {
+    backgroundColor: '#DCFCE7',
+  },
+  approvalBadgeDisputed: {
+    backgroundColor: '#FEE2E2',
+  },
+  approvalBadgeProvisional: {
+    backgroundColor: '#FEF3C7',
+  },
+  approvalBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  approvalTextApproved: {
+    color: '#15803D',
+  },
+  approvalTextDisputed: {
+    color: '#B91C1C',
+  },
+  approvalTextProvisional: {
+    color: '#B45309',
+  },
+  organizerReviewBtns: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  approveSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  approveSmallText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  disputeSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  disputeSmallText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  entryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  entryHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  entryTeamName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  entryCaptainSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  entryStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  entryBadgeApproved: {
+    backgroundColor: '#DCFCE7',
+  },
+  entryBadgeRejected: {
+    backgroundColor: '#FEE2E2',
+  },
+  entryBadgeChanges: {
+    backgroundColor: '#FEF3C7',
+  },
+  entryBadgeSubmitted: {
+    backgroundColor: '#E0F2FE',
+  },
+  entryStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  entryStatusTextApproved: {
+    color: '#15803D',
+  },
+  entryStatusTextRejected: {
+    color: '#B91C1C',
+  },
+  entryStatusTextChanges: {
+    color: '#B45309',
+  },
+  entryStatusTextSubmitted: {
+    color: '#0369A1',
+  },
+  toggleSquadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+  },
+  toggleSquadText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  squadListContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+  },
+  squadMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  squadMemberRank: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    width: 22,
+  },
+  squadMemberName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+    flex: 1,
+  },
+  squadMemberRole: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  entryActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  approveEntryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#16A34A',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  approveEntryText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  requestChangesBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  requestChangesText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  rejectEntryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  rejectEntryText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  csvTextInput: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 180,
   },
 });

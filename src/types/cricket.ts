@@ -298,6 +298,101 @@ export interface Match {
   organizerUserId?: string;
   delayNotes?: string;
   tournamentId?: string;
+  revision?: number;
+  resultDetails?: MatchResultDetails;
+}
+
+export interface ScoringCommandResult {
+  accepted: boolean;
+  rejectionReason?: string;
+  innings: Innings;
+  isWicket: boolean;
+  wicketValid: boolean;
+  dismissedPlayerId?: string;
+  vacantSlot: 'striker' | 'nonStriker' | null;
+  needsNewBowler: boolean;
+  isOverComplete: boolean;
+  isInningsComplete: boolean;
+  isMatchComplete?: boolean;
+  milestone?: string;
+  warning?: string;
+}
+
+export type TournamentStatus =
+  | 'draft'
+  | 'registration_open'
+  | 'registration_closed'
+  | 'scheduled'
+  | 'active'
+  | 'completed'
+  | 'archived';
+
+export type TournamentEntryStatus =
+  | 'draft'
+  | 'submitted'
+  | 'changes_requested'
+  | 'resubmitted'
+  | 'approved'
+  | 'rejected'
+  | 'waitlisted'
+  | 'withdrawn'
+  | 'disqualified';
+
+export interface TournamentSquadMember {
+  playerId: string;
+  playerName: string;
+  role: PlayingRole;
+  battingHand: BattingHand;
+  isCaptain?: boolean;
+  isWicketkeeper?: boolean;
+  jerseyNumber?: number;
+  phoneNumber?: string;
+  status: 'eligible' | 'replacement' | 'suspended' | 'withdrawn';
+  addedAt: number;
+  replacementReason?: string;
+}
+
+export interface TournamentEntry {
+  id: string;
+  tournamentId: string;
+  teamId: string;
+  teamName: string;
+  shortName: string;
+  primaryColor: string;
+  captainUserId?: string;
+  captainName?: string;
+  captainPhone?: string;
+  status: TournamentEntryStatus;
+  rejectionReason?: string;
+  changesRequestedReason?: string;
+  submittedAt: number;
+  reviewedAt?: number;
+  squad: TournamentSquadMember[];
+}
+
+export interface MatchLineup {
+  matchId: string;
+  teamId: string;
+  playingPlayerIds: string[];
+  captainPlayerId?: string;
+  wicketkeeperPlayerId?: string;
+  submittedAt?: number;
+  isLocked: boolean;
+}
+
+export type MatchApprovalStatus = 'provisional' | 'submitted' | 'approved' | 'disputed' | 'reopened';
+
+export interface MatchResultDetails {
+  winnerTeamId?: string;
+  winnerTeamName?: string;
+  winMarginRuns?: number;
+  winMarginWickets?: number;
+  outcomeType: 'win' | 'tie' | 'draw' | 'no_result' | 'abandoned' | 'super_over';
+  summary: string;
+  approvalStatus: MatchApprovalStatus;
+  disputeReason?: string;
+  reviewedByUserId?: string;
+  revisedTargetMethod?: string;
 }
 
 export interface Tournament {
@@ -310,6 +405,20 @@ export interface Tournament {
   creatorName: string;
   teams: Team[];
   matches: Match[];
-  status: 'upcoming' | 'active' | 'completed';
+  status: TournamentStatus | 'upcoming' | 'active' | 'completed';
   createdAt: number;
+  location?: string;
+  dates?: string;
+  registrationDeadline?: string;
+  squadLockDeadline?: string;
+  isSquadLocked?: boolean;
+  maxTeams?: number;
+  minSquadSize?: number;
+  maxSquadSize?: number;
+  pointsForWin?: number;
+  pointsForTie?: number;
+  pointsForNoResult?: number;
+  isPublic?: boolean;
+  registrationCode?: string;
+  rulesText?: string;
 }

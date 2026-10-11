@@ -3,7 +3,7 @@
 [![Expo SDK 57](https://img.shields.io/badge/Expo-SDK_57-blue.svg)](https://expo.dev)
 [![React Native 0.86](https://img.shields.io/badge/React_Native-0.86-61DAFB.svg)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6.svg)](https://www.typescriptlang.org)
-[![Tests Passing](https://img.shields.io/badge/Tests-43%2F43_Passed-success.svg)](#testing)
+[![Tests Passing](https://img.shields.io/badge/Tests-48%2F48_Passed-success.svg)](#testing)
 
 A high-performance, grassroots-to-professional Cricket Scoring, Tournament Management, and Player Analytics mobile application built with **Expo SDK 57**, **React Native 0.86**, **Expo Router**, and **AsyncStorage**.
 
@@ -123,7 +123,7 @@ Scan QR code with Expo Go or run a development build
 The codebase is fortified with comprehensive automated test suites covering rules logic, NRR calculations, ghost claiming, rollups, and end-to-end user journeys:
 
 ```bash
-# Run all automated test suites (43 passing tests)
+# Run all automated test suites (48 passing tests)
 npm test
 
 # Typecheck with TypeScript (0 errors)

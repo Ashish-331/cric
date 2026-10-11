@@ -150,6 +150,20 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveMatch(match);
   }, []);
 
+  // Strict serialization queue for all match-mutating operations
+  const enqueueMatchMutation = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      scoringQueueRef.current = scoringQueueRef.current.then(async () => {
+        try {
+          const result = await operation();
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+  }, []);
+
   // Helper to collect all players across teams
   const getAllPlayers = useCallback((teamList: Team[]): Player[] => {
     const map = new Map<string, Player>();
@@ -417,446 +431,515 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Ball-by-ball scoring with automatic result & rollup trigger (A2 & A4: Serialized command execution)
   const recordDelivery = useCallback(
     (input: BallInput): Promise<ScoringCommandResult> => {
-      return new Promise<ScoringCommandResult>((resolve, reject) => {
-        scoringQueueRef.current = scoringQueueRef.current.then(async () => {
-          try {
-            const currentMatch = activeMatchRef.current;
-            if (!currentMatch) {
-              throw new Error('No active match loaded for scoring.');
-            }
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) {
+          throw new Error('No active match loaded for scoring.');
+        }
 
-            const inningsIndex = currentMatch.currentInningsIndex;
-            const currentInnings = currentMatch.innings[inningsIndex];
-            if (!currentInnings || currentInnings.isCompleted) {
-              throw new Error('Current innings is already completed.');
-            }
+        const inningsIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[inningsIndex];
+        if (!currentInnings || currentInnings.isCompleted) {
+          throw new Error('Current innings is already completed.');
+        }
 
-            const strikerId = currentInnings.currentStrikerId;
-            const nonStrikerId = currentInnings.currentNonStrikerId;
-            const bowlerId = currentInnings.currentBowlerId;
+        const strikerId = currentInnings.currentStrikerId;
+        const nonStrikerId = currentInnings.currentNonStrikerId;
+        const bowlerId = currentInnings.currentBowlerId;
 
-            if (!strikerId || !nonStrikerId || !bowlerId) {
-              throw new Error('Please select both batters and a bowler before scoring.');
-            }
+        if (!strikerId || !nonStrikerId || !bowlerId) {
+          throw new Error('Please select both batters and a bowler before scoring.');
+        }
 
-            const isLegalDelivery = input.extraType !== 'wide' && input.extraType !== 'noBall';
-            const deliveryIndexInMatch = (currentInnings.deliveries?.length || 0) + 1;
-            const overIndex = Math.floor(currentInnings.legalBallsBowled / 6);
-            const ballInOver = (currentInnings.legalBallsBowled % 6) + (isLegalDelivery ? 1 : 0);
+        const deliveryId =
+          input.id || input.commandId || `del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-            const newDelivery: Delivery = {
-              id: `del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              ballNumberInMatch: deliveryIndexInMatch,
-              overIndex,
-              ballInOver,
-              isLegalDelivery,
-              strikerId,
-              nonStrikerId,
-              bowlerId,
-              runsBat: input.runsBat,
-              runsExtra: input.runsExtra,
-              extraType: input.extraType,
-              extrasDetail: input.extrasDetail,
-              physicalRunsRan: input.physicalRunsRan,
-              isBoundary: input.isBoundary,
-              isSix: input.isSix,
-              isWicket: input.isWicket,
-              wicketDetails: input.isWicket
-                ? {
-                    dismissalType: input.dismissalType || 'bowled',
-                    playerDismissedId: input.dismissedPlayerId || strikerId,
-                    bowlerId,
-                    fielderId: input.fielderId,
-                  }
-                : undefined,
-              commentary: input.commentary || '',
-              shotArea: input.shotArea,
-              pitchLength: input.pitchLength,
-              pitchLine: input.pitchLine,
-              pitchCoord: input.pitchCoord,
-              pitchProvenance: input.pitchProvenance || (input.pitchCoord ? 'observed' : undefined),
-              bowlingSide: input.bowlingSide,
-              timestamp: Date.now(),
-            };
+        // Idempotency: Return existing delivery result if already applied
+        const existingDelivery = currentInnings.deliveries?.find((d) => d.id === deliveryId);
+        if (existingDelivery) {
+          return {
+            accepted: true,
+            innings: currentInnings,
+            isWicket: Boolean(existingDelivery.isWicket),
+            wicketValid: Boolean(existingDelivery.isWicket),
+            dismissedPlayerId: existingDelivery.wicketDetails?.playerDismissedId,
+            vacantSlot: null,
+            needsNewBowler: false,
+            isOverComplete: false,
+            isInningsComplete: currentInnings.isCompleted,
+            isMatchComplete: currentMatch.status === 'completed',
+          };
+        }
 
-            if (!newDelivery.commentary) {
-              newDelivery.commentary = CricketEngine.generateDeliveryCommentary(newDelivery);
-            }
+        const isLegalDelivery = input.extraType !== 'wide' && input.extraType !== 'noBall';
+        const deliveryIndexInMatch = (currentInnings.deliveries?.length || 0) + 1;
+        const overIndex = Math.floor(currentInnings.legalBallsBowled / 6);
+        const ballInOver = (currentInnings.legalBallsBowled % 6) + (isLegalDelivery ? 1 : 0);
 
-            // A2: Execute scoring command authoritatively
-            const commandResult = CricketEngine.executeScoringCommand(
-              currentInnings,
-              newDelivery,
-              currentMatch.rules,
-              currentMatch.targetRuns
-            );
+        const newDelivery: Delivery = {
+          id: deliveryId,
+          ballNumberInMatch: deliveryIndexInMatch,
+          overIndex,
+          ballInOver,
+          isLegalDelivery,
+          strikerId,
+          nonStrikerId,
+          bowlerId,
+          runsBat: input.runsBat,
+          runsExtra: input.runsExtra,
+          extraType: input.extraType,
+          extrasDetail: input.extrasDetail,
+          physicalRunsRan: input.physicalRunsRan,
+          isBoundary: input.isBoundary,
+          isSix: input.isSix,
+          isWicket: input.isWicket,
+          wicketDetails: input.isWicket
+            ? {
+                dismissalType: input.dismissalType || 'bowled',
+                playerDismissedId: input.dismissedPlayerId || strikerId,
+                bowlerId,
+                fielderId: input.fielderId,
+              }
+            : undefined,
+          commentary: input.commentary || '',
+          shotArea: input.shotArea,
+          pitchLength: input.pitchLength,
+          pitchLine: input.pitchLine,
+          pitchCoord: input.pitchCoord,
+          pitchProvenance: input.pitchProvenance || (input.pitchCoord ? 'observed' : undefined),
+          bowlingSide: input.bowlingSide,
+          timestamp: Date.now(),
+        };
 
-            const updatedInnings = commandResult.innings;
-            const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
-            updatedInningsArray[inningsIndex] = updatedInnings;
+        if (!newDelivery.commentary) {
+          newDelivery.commentary = CricketEngine.generateDeliveryCommentary(newDelivery);
+        }
 
-            let matchStatus = currentMatch.status;
-            let matchResult = currentMatch.result;
+        // Execute scoring command authoritatively
+        const commandResult = CricketEngine.executeScoringCommand(
+          currentInnings,
+          newDelivery,
+          currentMatch.rules,
+          currentMatch.targetRuns
+        );
 
-            if (inningsIndex === 1 && updatedInnings.isCompleted) {
-              matchStatus = 'completed';
-              matchResult = CricketEngine.evaluateMatchResult({
-                ...currentMatch,
-                innings: updatedInningsArray,
-              });
-            } else if (inningsIndex === 0 && updatedInnings.isCompleted) {
-              matchStatus = 'innings_break';
-            }
+        if (!commandResult.accepted) {
+          throw new Error(commandResult.rejectionReason || 'Scoring delivery was rejected by domain engine.');
+        }
 
-            const isMatchComplete = matchStatus === 'completed';
+        const updatedInnings = commandResult.innings;
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[inningsIndex] = updatedInnings;
 
-            const updatedMatch: Match = {
-              ...currentMatch,
-              innings: updatedInningsArray,
-              status: matchStatus,
-              result: matchResult,
-              lastUpdated: Date.now(),
-              revision: (currentMatch.revision || 0) + 1,
-            };
+        let matchStatus = currentMatch.status;
+        let matchResult = currentMatch.result;
 
-            updateActiveMatch(updatedMatch);
-            await StorageService.saveMatch(updatedMatch);
-            await refreshMatches();
+        if (inningsIndex === 1 && updatedInnings.isCompleted) {
+          matchStatus = 'completed';
+          matchResult = CricketEngine.evaluateMatchResult({
+            ...currentMatch,
+            innings: updatedInningsArray,
+          });
+        } else if (inningsIndex === 0 && updatedInnings.isCompleted) {
+          matchStatus = 'innings_break';
+        }
 
-            if (matchStatus === 'completed') {
-              const allMatches = await StorageService.getMatches();
-              const rolledTeams = await applyCareerStatsRollup(allMatches, teams);
-              setTeams(rolledTeams);
-            }
+        const isMatchComplete = matchStatus === 'completed';
 
-            resolve({
-              ...commandResult,
-              isMatchComplete,
-            });
-          } catch (err) {
-            reject(err);
-          }
-        });
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          status: matchStatus,
+          result: matchResult,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
+
+        // Persist to storage BEFORE updating in-memory active match
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
+
+        if (matchStatus === 'completed') {
+          const allMatches = await StorageService.getMatches();
+          const rolledTeams = await applyCareerStatsRollup(allMatches, teams);
+          setTeams(rolledTeams);
+        }
+
+        return {
+          ...commandResult,
+          isMatchComplete,
+        };
       });
     },
-    [applyCareerStatsRollup, refreshMatches, teams, updateActiveMatch]
+    [applyCareerStatsRollup, enqueueMatchMutation, refreshMatches, teams, updateActiveMatch]
   );
 
   // Explicit non-delivery batter retirement
   const retireBatter = useCallback(
     async (playerId: string, dismissalType: 'retired_hurt' | 'retired_out') => {
-      if (!activeMatch) return;
-      const innIndex = activeMatch.currentInningsIndex;
-      const currentInnings = activeMatch.innings[innIndex];
-      if (!currentInnings) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const innIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[innIndex];
+        if (!currentInnings) return;
 
-      const updatedInnings = CricketEngine.retireBatter(
-        currentInnings,
-        playerId,
-        dismissalType,
-        Date.now()
-      );
+        const updatedInnings = CricketEngine.retireBatter(
+          currentInnings,
+          playerId,
+          dismissalType,
+          Date.now()
+        );
 
-      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-      updatedInningsArray[innIndex] = updatedInnings;
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[innIndex] = updatedInnings;
 
-      const updatedMatch: Match = {
-        ...activeMatch,
-        innings: updatedInningsArray,
-        lastUpdated: Date.now(),
-      };
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
 
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
-      await refreshMatches();
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
+      });
     },
-    [activeMatch, refreshMatches]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   // Return batter to crease after retired hurt
   const returnBatter = useCallback(
     async (playerId: string, slot: 'striker' | 'nonStriker') => {
-      if (!activeMatch) return;
-      const innIndex = activeMatch.currentInningsIndex;
-      const currentInnings = activeMatch.innings[innIndex];
-      if (!currentInnings) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const innIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[innIndex];
+        if (!currentInnings) return;
 
-      const updatedInnings = CricketEngine.returnBatter(
-        currentInnings,
-        playerId,
-        slot,
-        Date.now()
-      );
+        const updatedInnings = CricketEngine.returnBatter(
+          currentInnings,
+          playerId,
+          slot,
+          Date.now()
+        );
 
-      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-      updatedInningsArray[innIndex] = updatedInnings;
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[innIndex] = updatedInnings;
 
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
-      await refreshMatches();
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
+
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
+      });
     },
-    [activeMatch, refreshMatches]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   // Undo delivery or last scoring action (A4: Serialized)
   const undoDelivery = useCallback(async () => {
-    return new Promise<void>((resolve, reject) => {
-      scoringQueueRef.current = scoringQueueRef.current.then(async () => {
-        try {
-          const currentMatch = activeMatchRef.current;
-          if (!currentMatch) return resolve();
-          const innIndex = currentMatch.currentInningsIndex;
-          const currentInnings = currentMatch.innings[innIndex];
-          if (!currentInnings) return resolve();
+    return enqueueMatchMutation(async () => {
+      const currentMatch = activeMatchRef.current;
+      if (!currentMatch) return;
+      const innIndex = currentMatch.currentInningsIndex;
+      const currentInnings = currentMatch.innings[innIndex];
+      if (!currentInnings) return;
 
-          let replayedInnings: Innings;
-          if (currentInnings.actions && currentInnings.actions.length > 0) {
-            const newActions = currentInnings.actions.slice(0, -1);
-            replayedInnings = CricketEngine.replayInnings(
-              currentMatch.innings[innIndex]!,
-              newActions,
-              currentMatch.rules,
-              currentMatch.targetRuns
-            );
-          } else if (currentInnings.deliveries && currentInnings.deliveries.length > 0) {
-            const newDeliveries = currentInnings.deliveries.slice(0, -1);
-            replayedInnings = CricketEngine.replayInnings(
-              currentMatch.innings[innIndex]!,
-              newDeliveries,
-              currentMatch.rules,
-              currentMatch.targetRuns
-            );
-          } else {
-            return resolve();
-          }
+      let replayedInnings: Innings;
+      if (currentInnings.actions && currentInnings.actions.length > 0) {
+        const newActions = currentInnings.actions.slice(0, -1);
+        replayedInnings = CricketEngine.replayInnings(
+          currentMatch.innings[innIndex]!,
+          newActions,
+          currentMatch.rules,
+          currentMatch.targetRuns
+        );
+      } else if (currentInnings.deliveries && currentInnings.deliveries.length > 0) {
+        const newDeliveries = currentInnings.deliveries.slice(0, -1);
+        replayedInnings = CricketEngine.replayInnings(
+          currentMatch.innings[innIndex]!,
+          newDeliveries,
+          currentMatch.rules,
+          currentMatch.targetRuns
+        );
+      } else {
+        return;
+      }
 
-          const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
-          updatedInningsArray[innIndex] = replayedInnings;
+      const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+      updatedInningsArray[innIndex] = replayedInnings;
 
-          const updatedMatch: Match = {
-            ...currentMatch,
-            status: 'live',
-            result: undefined,
-            innings: updatedInningsArray,
-            lastUpdated: Date.now(),
-            revision: (currentMatch.revision || 0) + 1,
-          };
+      const updatedMatch: Match = {
+        ...currentMatch,
+        status: 'live',
+        result: undefined,
+        innings: updatedInningsArray,
+        lastUpdated: Date.now(),
+        revision: (currentMatch.revision || 0) + 1,
+      };
 
-          updateActiveMatch(updatedMatch);
-          await StorageService.saveMatch(updatedMatch);
-          await refreshMatches();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
+      await StorageService.saveMatch(updatedMatch);
+      updateActiveMatch(updatedMatch);
+      await refreshMatches();
     });
-  }, [refreshMatches, updateActiveMatch]);
+  }, [enqueueMatchMutation, refreshMatches, updateActiveMatch]);
 
   const selectBowler = useCallback(
     async (bowlerId: string) => {
-      if (!activeMatch) return;
-      const innIndex = activeMatch.currentInningsIndex;
-      const currentInnings = activeMatch.innings[innIndex];
-      if (!currentInnings) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const innIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[innIndex];
+        if (!currentInnings) return;
 
-      const actions = [...(currentInnings.actions || [])];
-      actions.push({
-        type: 'SELECT_BOWLER',
-        bowlerId,
-        timestamp: Date.now(),
+        const actions = [...(currentInnings.actions || [])];
+        actions.push({
+          type: 'SELECT_BOWLER',
+          bowlerId,
+          timestamp: Date.now(),
+        });
+
+        const updatedInnings: Innings = {
+          ...currentInnings,
+          currentBowlerId: bowlerId,
+          actions,
+        };
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[innIndex] = updatedInnings;
+
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
+
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
       });
-
-      const updatedInnings: Innings = {
-        ...currentInnings,
-        currentBowlerId: bowlerId,
-        actions,
-      };
-      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-      updatedInningsArray[innIndex] = updatedInnings;
-
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
     },
-    [activeMatch]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   const selectStriker = useCallback(
     async (strikerId: string) => {
-      if (!activeMatch) return;
-      const innIndex = activeMatch.currentInningsIndex;
-      const currentInnings = activeMatch.innings[innIndex];
-      if (!currentInnings) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const innIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[innIndex];
+        if (!currentInnings) return;
 
-      const updatedBatterStats = { ...currentInnings.batterStats };
-      if (!updatedBatterStats[strikerId]) {
-        updatedBatterStats[strikerId] = {
+        const updatedBatterStats = { ...currentInnings.batterStats };
+        if (!updatedBatterStats[strikerId]) {
+          updatedBatterStats[strikerId] = {
+            playerId: strikerId,
+            runs: 0,
+            ballsFaced: 0,
+            fours: 0,
+            sixes: 0,
+            strikeRate: 0,
+            isOut: false,
+            battingOrder: Object.keys(updatedBatterStats).length + 1,
+          };
+        } else {
+          updatedBatterStats[strikerId] = {
+            ...updatedBatterStats[strikerId],
+            isOut: false,
+            dismissalText: undefined,
+          };
+        }
+
+        const actions = [...(currentInnings.actions || [])];
+        actions.push({
+          type: 'SELECT_BATTER',
           playerId: strikerId,
-          runs: 0,
-          ballsFaced: 0,
-          fours: 0,
-          sixes: 0,
-          strikeRate: 0,
-          isOut: false,
-          battingOrder: Object.keys(updatedBatterStats).length + 1,
-        };
-      } else {
-        updatedBatterStats[strikerId] = {
-          ...updatedBatterStats[strikerId],
-          isOut: false,
-          dismissalText: undefined,
-        };
-      }
+          slot: 'striker',
+          timestamp: Date.now(),
+        });
 
-      const actions = [...(currentInnings.actions || [])];
-      actions.push({
-        type: 'SELECT_BATTER',
-        playerId: strikerId,
-        slot: 'striker',
-        timestamp: Date.now(),
+        const updatedInnings: Innings = {
+          ...currentInnings,
+          batterStats: updatedBatterStats,
+          currentStrikerId: strikerId,
+          // Prevent duplicate batsman occupying both crease ends
+          currentNonStrikerId:
+            currentInnings.currentNonStrikerId === strikerId
+              ? undefined
+              : currentInnings.currentNonStrikerId,
+          actions,
+        };
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[innIndex] = updatedInnings;
+
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
+
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
       });
-
-      const updatedInnings: Innings = {
-        ...currentInnings,
-        batterStats: updatedBatterStats,
-        currentStrikerId: strikerId,
-        // Prevent duplicate batsman occupying both crease ends
-        currentNonStrikerId:
-          currentInnings.currentNonStrikerId === strikerId
-            ? undefined
-            : currentInnings.currentNonStrikerId,
-        actions,
-      };
-      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-      updatedInningsArray[innIndex] = updatedInnings;
-
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
     },
-    [activeMatch]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   const selectNonStriker = useCallback(
     async (nonStrikerId: string) => {
-      if (!activeMatch) return;
-      const innIndex = activeMatch.currentInningsIndex;
-      const currentInnings = activeMatch.innings[innIndex];
-      if (!currentInnings) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const innIndex = currentMatch.currentInningsIndex;
+        const currentInnings = currentMatch.innings[innIndex];
+        if (!currentInnings) return;
 
-      const updatedBatterStats = { ...currentInnings.batterStats };
-      if (!updatedBatterStats[nonStrikerId]) {
-        updatedBatterStats[nonStrikerId] = {
+        const updatedBatterStats = { ...currentInnings.batterStats };
+        if (!updatedBatterStats[nonStrikerId]) {
+          updatedBatterStats[nonStrikerId] = {
+            playerId: nonStrikerId,
+            runs: 0,
+            ballsFaced: 0,
+            fours: 0,
+            sixes: 0,
+            strikeRate: 0,
+            isOut: false,
+            battingOrder: Object.keys(updatedBatterStats).length + 1,
+          };
+        } else {
+          updatedBatterStats[nonStrikerId] = {
+            ...updatedBatterStats[nonStrikerId],
+            isOut: false,
+            dismissalText: undefined,
+          };
+        }
+
+        const actions = [...(currentInnings.actions || [])];
+        actions.push({
+          type: 'SELECT_BATTER',
           playerId: nonStrikerId,
-          runs: 0,
-          ballsFaced: 0,
-          fours: 0,
-          sixes: 0,
-          strikeRate: 0,
-          isOut: false,
-          battingOrder: Object.keys(updatedBatterStats).length + 1,
-        };
-      } else {
-        updatedBatterStats[nonStrikerId] = {
-          ...updatedBatterStats[nonStrikerId],
-          isOut: false,
-          dismissalText: undefined,
-        };
-      }
+          slot: 'nonStriker',
+          timestamp: Date.now(),
+        });
 
-      const actions = [...(currentInnings.actions || [])];
-      actions.push({
-        type: 'SELECT_BATTER',
-        playerId: nonStrikerId,
-        slot: 'nonStriker',
-        timestamp: Date.now(),
+        const updatedInnings: Innings = {
+          ...currentInnings,
+          batterStats: updatedBatterStats,
+          currentNonStrikerId: nonStrikerId,
+          // Prevent duplicate batsman occupying both crease ends
+          currentStrikerId:
+            currentInnings.currentStrikerId === nonStrikerId
+              ? undefined
+              : currentInnings.currentStrikerId,
+          actions,
+        };
+        const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+        updatedInningsArray[innIndex] = updatedInnings;
+
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: updatedInningsArray,
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
+
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
       });
-
-      const updatedInnings: Innings = {
-        ...currentInnings,
-        batterStats: updatedBatterStats,
-        currentNonStrikerId: nonStrikerId,
-        // Prevent duplicate batsman occupying both crease ends
-        currentStrikerId:
-          currentInnings.currentStrikerId === nonStrikerId
-            ? undefined
-            : currentInnings.currentStrikerId,
-        actions,
-      };
-      const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-      updatedInningsArray[innIndex] = updatedInnings;
-
-      const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
     },
-    [activeMatch]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   // Manual swap strike button
   const swapStrikerNonStriker = useCallback(async () => {
-    if (!activeMatch) return;
-    const innIndex = activeMatch.currentInningsIndex;
-    const currentInnings = activeMatch.innings[innIndex];
-    if (!currentInnings) return;
+    return enqueueMatchMutation(async () => {
+      const currentMatch = activeMatchRef.current;
+      if (!currentMatch) return;
+      const innIndex = currentMatch.currentInningsIndex;
+      const currentInnings = currentMatch.innings[innIndex];
+      if (!currentInnings) return;
 
-    const actions = [...(currentInnings.actions || [])];
-    actions.push({
-      type: 'SWAP_ENDS',
-      timestamp: Date.now(),
+      const actions = [...(currentInnings.actions || [])];
+      actions.push({
+        type: 'SWAP_ENDS',
+        timestamp: Date.now(),
+      });
+
+      const temp = currentInnings.currentStrikerId;
+      const updatedInnings: Innings = {
+        ...currentInnings,
+        currentStrikerId: currentInnings.currentNonStrikerId,
+        currentNonStrikerId: temp,
+        actions,
+      };
+
+      const updatedInningsArray: [Innings, Innings?] = [...currentMatch.innings];
+      updatedInningsArray[innIndex] = updatedInnings;
+
+      const updatedMatch: Match = {
+        ...currentMatch,
+        innings: updatedInningsArray,
+        lastUpdated: Date.now(),
+        revision: (currentMatch.revision || 0) + 1,
+      };
+
+      await StorageService.saveMatch(updatedMatch);
+      updateActiveMatch(updatedMatch);
+      await refreshMatches();
     });
-
-    const temp = currentInnings.currentStrikerId;
-    const updatedInnings: Innings = {
-      ...currentInnings,
-      currentStrikerId: currentInnings.currentNonStrikerId,
-      currentNonStrikerId: temp,
-      actions,
-    };
-
-    const updatedInningsArray: [Innings, Innings?] = [...activeMatch.innings];
-    updatedInningsArray[innIndex] = updatedInnings;
-
-    const updatedMatch = { ...activeMatch, innings: updatedInningsArray, lastUpdated: Date.now() };
-    setActiveMatch(updatedMatch);
-    await StorageService.saveMatch(updatedMatch);
-  }, [activeMatch]);
+  }, [enqueueMatchMutation, refreshMatches, updateActiveMatch]);
 
   const startSecondInnings = useCallback(
     async (strikerId: string, nonStrikerId: string, bowlerId: string) => {
-      if (!activeMatch) return;
-      const inn1 = activeMatch.innings[0];
-      if (!inn1) return;
+      return enqueueMatchMutation(async () => {
+        const currentMatch = activeMatchRef.current;
+        if (!currentMatch) return;
+        const inn1 = currentMatch.innings[0];
+        if (!inn1) return;
 
-      const targetRuns = inn1.totalRuns + 1;
-      const battingTeamId = inn1.bowlingTeamId;
-      const bowlingTeamId = inn1.battingTeamId;
+        const targetRuns = inn1.totalRuns + 1;
+        const battingTeamId = inn1.bowlingTeamId;
+        const bowlingTeamId = inn1.battingTeamId;
 
-      const inn2 = createInitialInnings(
-        2,
-        battingTeamId,
-        bowlingTeamId,
-        strikerId,
-        nonStrikerId,
-        bowlerId
-      );
+        const inn2 = createInitialInnings(
+          2,
+          battingTeamId,
+          bowlingTeamId,
+          strikerId,
+          nonStrikerId,
+          bowlerId
+        );
 
-      const updatedMatch: Match = {
-        ...activeMatch,
-        innings: [inn1, inn2],
-        currentInningsIndex: 1,
-        targetRuns,
-        status: 'live',
-        lastUpdated: Date.now(),
-      };
+        const updatedMatch: Match = {
+          ...currentMatch,
+          innings: [inn1, inn2],
+          currentInningsIndex: 1,
+          targetRuns,
+          status: 'live',
+          lastUpdated: Date.now(),
+          revision: (currentMatch.revision || 0) + 1,
+        };
 
-      setActiveMatch(updatedMatch);
-      await StorageService.saveMatch(updatedMatch);
-      await refreshMatches();
+        await StorageService.saveMatch(updatedMatch);
+        updateActiveMatch(updatedMatch);
+        await refreshMatches();
+      });
     },
-    [activeMatch, refreshMatches]
+    [enqueueMatchMutation, refreshMatches, updateActiveMatch]
   );
 
   // Create New Match organized by user

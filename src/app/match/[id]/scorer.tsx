@@ -80,6 +80,11 @@ export default function ScorerScreen() {
   const [inn2NonStrikerId, setInn2NonStrikerId] = useState('');
   const [inn2BowlerId, setInn2BowlerId] = useState('');
 
+  // Persistence status (must be declared before any conditional return to obey Rules of Hooks)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastFailedBall, setLastFailedBall] = useState<BallInput | null>(null);
+
   useEffect(() => {
     if (id) {
       loadMatchById(id);
@@ -134,10 +139,6 @@ export default function ScorerScreen() {
   const nonStriker = getPlayer(currentInnings.currentNonStrikerId);
   const currentBowler = getPlayer(currentInnings.currentBowlerId);
 
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [lastFailedBall, setLastFailedBall] = useState<BallInput | null>(null);
-
   const triggerCelebration = (
     type: CelebrationType,
     title?: string,
@@ -150,12 +151,17 @@ export default function ScorerScreen() {
   };
 
   const commitDelivery = async (input: BallInput): Promise<void> => {
+    const ballToCommit: BallInput = {
+      ...input,
+      id: input.id || input.commandId || `del_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    };
+
     try {
       const strikerId = currentInnings.currentStrikerId;
       const prevRuns = (strikerId && currentInnings.batterStats[strikerId]?.runs) || 0;
 
       setSaveStatus('saving');
-      const outcome = await recordDelivery(input);
+      const outcome = await recordDelivery(ballToCommit);
       setSaveStatus('saved');
       setSaveError(null);
       setLastFailedBall(null);
@@ -180,7 +186,7 @@ export default function ScorerScreen() {
         }
       } else {
         // Milestone and boundary celebrations on fair, valid scoring
-        const addedRuns = input.runsBat || 0;
+        const addedRuns = ballToCommit.runsBat || 0;
         const newRuns = prevRuns + addedRuns;
 
         if (prevRuns < 50 && newRuns >= 50) {
@@ -197,13 +203,13 @@ export default function ScorerScreen() {
             `What a masterclass! Century reached by ${striker?.name || 'Batter'}!`
           );
           CricketHaptics.milestone();
-        } else if (input.isSix) {
+        } else if (ballToCommit.isSix) {
           triggerCelebration(
             'six',
             'MAXIMUM 6!',
             `${striker?.name || 'Batter'} launches it into the stands!`
           );
-        } else if (input.isBoundary) {
+        } else if (ballToCommit.isBoundary) {
           triggerCelebration(
             'four',
             'CRACKING FOUR!',
@@ -221,7 +227,7 @@ export default function ScorerScreen() {
     } catch (err: any) {
       setSaveStatus('failed');
       setSaveError(err.message || 'Storage write failed');
-      setLastFailedBall(input);
+      setLastFailedBall(ballToCommit);
       Alert.alert('Storage Save Error', err.message);
     }
   };

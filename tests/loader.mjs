@@ -3,11 +3,27 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const mockAsyncStorageURL = pathToFileURL(path.resolve('./tests/mockAsyncStorage.mjs')).href;
+const mockReactNativeURL = pathToFileURL(path.resolve('./tests/mockReactNative.mjs')).href;
+const mockExpoSqliteURL = pathToFileURL(path.resolve('./tests/mockExpoSqlite.mjs')).href;
 
 export async function resolve(specifier, context, nextResolve) {
   if (specifier === '@react-native-async-storage/async-storage') {
     return {
       url: mockAsyncStorageURL,
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === 'react-native') {
+    return {
+      url: mockReactNativeURL,
+      shortCircuit: true,
+    };
+  }
+
+  if (specifier === 'expo-sqlite') {
+    return {
+      url: mockExpoSqliteURL,
       shortCircuit: true,
     };
   }

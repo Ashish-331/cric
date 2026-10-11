@@ -34,6 +34,109 @@ export function isBowlerCreditedDismissal(type: DismissalType): boolean {
   return BOWLER_CREDITED_DISMISSALS.includes(type);
 }
 
+export class CricketDomainError extends Error {
+  public code: string;
+  constructor(message: string, code: string = 'INVALID_INPUT') {
+    super(message);
+    this.name = 'CricketDomainError';
+    this.code = code;
+  }
+}
+
+/**
+ * Pure domain validation for delivery input and participant eligibility.
+ * Rejects negative runs, fractional runs, identical crease batters, bowler as batter, and missing participants.
+ */
+export function validateDeliveryInput(
+  delivery: Delivery,
+  innings: Innings,
+  rules?: MatchRules
+): { isValid: boolean; reason?: string } {
+  // Check runs are non-negative integers
+  if (
+    typeof delivery.runsBat !== 'number' ||
+    !Number.isInteger(delivery.runsBat) ||
+    delivery.runsBat < 0
+  ) {
+    return {
+      isValid: false,
+      reason: `Batter runs must be a non-negative integer, received: ${delivery.runsBat}`,
+    };
+  }
+
+  if (
+    typeof delivery.runsExtra !== 'number' ||
+    !Number.isInteger(delivery.runsExtra) ||
+    delivery.runsExtra < 0
+  ) {
+    return {
+      isValid: false,
+      reason: `Extra runs must be a non-negative integer, received: ${delivery.runsExtra}`,
+    };
+  }
+
+  if (
+    delivery.physicalRunsRan !== undefined &&
+    (typeof delivery.physicalRunsRan !== 'number' ||
+      !Number.isInteger(delivery.physicalRunsRan) ||
+      delivery.physicalRunsRan < 0)
+  ) {
+    return {
+      isValid: false,
+      reason: `Physical runs ran must be a non-negative integer, received: ${delivery.physicalRunsRan}`,
+    };
+  }
+
+  // Participants check
+  if (!delivery.strikerId || typeof delivery.strikerId !== 'string') {
+    return { isValid: false, reason: 'Striker ID is required' };
+  }
+  if (!delivery.nonStrikerId || typeof delivery.nonStrikerId !== 'string') {
+    return { isValid: false, reason: 'Non-striker ID is required' };
+  }
+  if (!delivery.bowlerId || typeof delivery.bowlerId !== 'string') {
+    return { isValid: false, reason: 'Bowler ID is required' };
+  }
+
+  // Crease participant uniqueness
+  if (delivery.strikerId === delivery.nonStrikerId) {
+    return {
+      isValid: false,
+      reason: 'Striker and non-striker cannot be the same player',
+    };
+  }
+  if (delivery.bowlerId === delivery.strikerId || delivery.bowlerId === delivery.nonStrikerId) {
+    return {
+      isValid: false,
+      reason: 'Bowler cannot be currently batting at the crease',
+    };
+  }
+
+  // Bowler max overs quota (if configured)
+  if (rules && rules.maxOversPerBowler) {
+    const bowlerStats = innings.bowlerStats[delivery.bowlerId];
+    if (bowlerStats) {
+      const maxBalls = rules.maxOversPerBowler * 6;
+      if (bowlerStats.legalBalls >= maxBalls && delivery.isLegalDelivery) {
+        return {
+          isValid: false,
+          reason: `Bowler has already completed maximum quota of ${rules.maxOversPerBowler} overs`,
+        };
+      }
+    }
+  }
+
+  // Inconsistent extra / boundary logic
+  if (delivery.extraType === 'wide' && delivery.runsBat > 0) {
+    return {
+      isValid: false,
+      reason: 'Batter cannot score bat runs off a Wide delivery',
+    };
+  }
+
+  return { isValid: true };
+}
+
 export function validateDismissalLegality(
   type: DismissalType,
   context: { isNoBall: boolean; isWide: boolean; isFreeHit: boolean }
@@ -76,6 +179,8 @@ export function validateDismissalLegality(
 }
 
 export interface BallInput {
+  id?: string;
+  commandId?: string;
   runsBat: number;
   extraType: ExtraType;
   runsExtra: number;
@@ -569,6 +674,24 @@ export class CricketEngine {
     targetRuns?: number,
     commentaryContext?: CommentaryContext
   ): ScoringCommandResult {
+    // 1. Pure domain input validation
+    const validation = validateDeliveryInput(delivery, innings, rules);
+    if (!validation.isValid) {
+      return {
+        accepted: false,
+        rejectionReason: validation.reason,
+        innings,
+        isWicket: false,
+        wicketValid: false,
+        dismissedPlayerId: undefined,
+        vacantSlot: null,
+        needsNewBowler: false,
+        isOverComplete: false,
+        isInningsComplete: innings.isCompleted,
+        warning: validation.reason,
+      };
+    }
+
     const wasFreeHit = Boolean(innings.isFreeHit);
     const isNoBallDelivery = delivery.extraType === 'noBall' || Boolean(delivery.extrasDetail?.noBall);
     const isWideDelivery = delivery.extraType === 'wide' || Boolean(delivery.extrasDetail?.wide);
@@ -643,6 +766,11 @@ export class CricketEngine {
     targetRuns?: number,
     commentaryContext?: CommentaryContext
   ): Innings {
+    const validation = validateDeliveryInput(delivery, innings, rules);
+    if (!validation.isValid) {
+      throw new CricketDomainError(validation.reason || 'Invalid delivery', 'INVALID_DELIVERY');
+    }
+
     const updated = JSON.parse(JSON.stringify(innings)) as Innings;
 
     // Preserve / update bowling side

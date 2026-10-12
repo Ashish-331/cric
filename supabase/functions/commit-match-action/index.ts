@@ -12,7 +12,6 @@ import type {
   Match,
   Innings,
   InningsAction,
-  BallInput,
 } from '../_shared/types.ts';
 
 interface CommitActionPayload {
@@ -170,38 +169,29 @@ serve(async (req: Request) => {
       const updatedInningsArray: [Innings, Innings?] = [...currentMatchState.innings];
 
       if (action.type === 'DELIVERY') {
-        const ballInput: BallInput = {
-          commandId: actionId,
-          runsBat: action.delivery.runsBat,
-          runsExtra: action.delivery.runsExtra,
-          extraType: action.delivery.extraType,
-          isWicket: action.delivery.isWicket,
-          dismissalType: action.delivery.wicketDetails?.dismissalType,
-          dismissedPlayerId: action.delivery.wicketDetails?.playerDismissedId,
-          catcherFielderId: action.delivery.wicketDetails?.fielderId,
-          isBoundary: action.delivery.isBoundary,
-          isSix: action.delivery.isSix,
-          commentary: action.delivery.commentary,
-          shotSector: action.delivery.shotSector,
-          pitchLength: action.delivery.pitchLength,
-          pitchLine: action.delivery.pitchLine,
-          pitchCoordinate: action.delivery.pitchCoordinate,
-        };
-
-        const result = CricketEngine.recordDelivery(
+        const commandResult = CricketEngine.executeScoringCommand(
           currentInnings,
-          ballInput,
+          action.delivery,
           currentMatchState.rules,
-          currentMatchState.targetRuns,
-          action.delivery.timestamp || Date.now()
+          currentMatchState.targetRuns
         );
 
-        updatedInningsArray[innIndex] = result.innings;
+        if (!commandResult.accepted) {
+          return new Response(
+            JSON.stringify({
+              error: 'INVALID_DELIVERY',
+              reason: commandResult.rejectionReason || 'Delivery failed cricket rules validation',
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        updatedInningsArray[innIndex] = commandResult.innings;
         nextMatchState = {
           ...nextMatchState,
           innings: updatedInningsArray,
-          status: result.isMatchComplete ? 'completed' : nextMatchState.status,
-          result: result.isMatchComplete
+          status: commandResult.isMatchComplete ? 'completed' : nextMatchState.status,
+          result: commandResult.isMatchComplete
             ? CricketEngine.evaluateMatchResult(nextMatchState) || 'Match Concluded'
             : nextMatchState.result,
         };

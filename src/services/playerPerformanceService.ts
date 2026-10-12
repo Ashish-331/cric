@@ -139,4 +139,76 @@ export class PlayerPerformanceService {
 
     return null;
   }
+
+  /**
+   * Filters matches based on canonical user relationship:
+   * - 'your': owned/managed/created/scored by user
+   * - 'played': user actively participated in lineups or figures
+   * - 'network': matches belonging to registered teams, clubs, or tournaments user belongs to
+   * - 'all': all accessible public matches
+   */
+  static getFilteredMatchesForUser(
+    userId: string,
+    filterType: 'your' | 'played' | 'network' | 'all',
+    matches: Match[],
+    teams: any[] = [],
+    tournaments: any[] = []
+  ): Match[] {
+    if (!matches || matches.length === 0) return [];
+    if (!userId && filterType !== 'all') return [];
+
+    // User's associated team IDs
+    const userTeamIds = new Set<string>();
+    for (const t of teams) {
+      if (
+        t.captainPlayerId === userId ||
+        t.createdByUserId === userId ||
+        t.players?.some((p: any) => p.id === userId || p.claimedByUserId === userId)
+      ) {
+        userTeamIds.add(t.id);
+      }
+    }
+
+    // User's associated tournament IDs
+    const userTournamentIds = new Set<string>();
+    for (const tr of tournaments) {
+      if (
+        tr.creatorUserId === userId ||
+        tr.teams?.some((t: any) => userTeamIds.has(t.id))
+      ) {
+        userTournamentIds.add(tr.id);
+      }
+    }
+
+    return matches.filter((m) => {
+      if (filterType === 'all') {
+        return true;
+      }
+
+      if (filterType === 'your') {
+        const isOrganizer = m.organizerUserId === userId;
+        const isScorer = m.scorerPlayerId === userId || m.scorerName?.toLowerCase().includes(userId.toLowerCase());
+        const isTeamManager = userTeamIds.has(m.team1.id) || userTeamIds.has(m.team2.id);
+        return isOrganizer || isScorer || isTeamManager;
+      }
+
+      if (filterType === 'played') {
+        const inTeam1Lineup = m.team1.players?.some((p: any) => p.id === userId || p.claimedByUserId === userId);
+        const inTeam2Lineup = m.team2.players?.some((p: any) => p.id === userId || p.claimedByUserId === userId);
+        const battedOrBowled = m.innings?.some((inn) => {
+          return Boolean(inn?.batterStats?.[userId]) || Boolean(inn?.bowlerStats?.[userId]);
+        });
+        return inTeam1Lineup || inTeam2Lineup || battedOrBowled;
+      }
+
+      if (filterType === 'network') {
+        const inUserTeam = userTeamIds.has(m.team1.id) || userTeamIds.has(m.team2.id);
+        const inUserTournament = m.tournamentId ? userTournamentIds.has(m.tournamentId) : false;
+        return inUserTeam || inUserTournament;
+      }
+
+      return true;
+    });
+  }
 }
+

@@ -33,6 +33,7 @@ import { StorageService, UserProfile, PRESET_USERS } from '../storage/storageSer
 import { matchRepository } from '../repositories';
 import { SyncService } from '../services/syncService';
 import { getDatabase } from '../repositories/sqlite/database';
+import { generateUUID } from '../utils/uuid';
 
 interface CreateMatchParams {
   title: string;
@@ -677,6 +678,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -732,6 +734,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -800,6 +803,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -852,6 +856,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -933,6 +938,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -1014,6 +1020,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -1070,6 +1077,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         );
       } catch (sqliteErr: any) {
         console.warn('SQLite repository append notice:', sqliteErr.message);
+        throw sqliteErr;
       }
 
       await StorageService.saveMatch(updatedMatch);
@@ -1125,6 +1133,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           );
         } catch (sqliteErr: any) {
           console.warn('SQLite repository append notice:', sqliteErr.message);
+          throw sqliteErr;
         }
 
         await StorageService.saveMatch(updatedMatch);
@@ -1183,7 +1192,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const numPlayers = params.playersPerTeam || Math.max(team1.players.length, team2.players.length, 11);
 
       const newMatch: Match = {
-        id: `match_${Date.now()}`,
+        id: generateUUID(),
         title,
         format,
         venue,

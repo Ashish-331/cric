@@ -99,6 +99,7 @@ export interface Player {
   phoneNumber?: string;
   isVerified?: boolean;
   isGuest?: boolean;
+  isClaimed?: boolean;
   claimedByUserId?: string;
   isCaptain?: boolean;
   isWicketkeeper?: boolean;
@@ -302,6 +303,7 @@ export interface Match {
   tournamentId?: string;
   revision?: number;
   authorityEpoch?: number;
+  approvalStatus?: MatchApprovalStatus;
   resultDetails?: MatchResultDetails;
 }
 

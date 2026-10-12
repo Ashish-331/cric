@@ -34,8 +34,18 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Arena',
-          headerTitle: 'Cricket Arena Live',
+          title: 'Home',
+          headerTitle: 'Cric — Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="my-cricket"
+        options={{
+          title: 'My Cricket',
+          headerTitle: 'My Cricket',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="cricket" size={size} color={color} />
           ),

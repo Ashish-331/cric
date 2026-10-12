@@ -16,11 +16,13 @@ import { Colors } from '../../utils/colors';
 import { Badge } from '../../components/common/Badge';
 
 import { PlayerPerformanceService } from '../../services/playerPerformanceService';
+import { NavigationDrawerModal } from '../../components/navigation/NavigationDrawerModal';
 
 export default function MatchesScreen() {
   const { matches, refreshMatches, tournaments, refreshTournaments, userProfile } = useCricket();
   const [filter, setFilter] = useState<'all' | 'live' | 'completed'>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -118,31 +120,52 @@ export default function MatchesScreen() {
           </View>
         </View>
 
-        {/* Result or Live Status */}
-        <View style={styles.cardFooter}>
-          <Text style={styles.resultText} numberOfLines={1}>
-            {item.result ||
-              (item.status === 'live'
-                ? `Innings ${item.currentInningsIndex + 1} in progress`
-                : 'Innings Break')}
-          </Text>
+        {/* Deep Action Links: Insights, Table, Leaderboard */}
+        <View style={styles.deepActionLinksRow}>
+          <TouchableOpacity
+            style={styles.actionChip}
+            onPress={() => router.push(`/match/${item.id}`)}
+          >
+            <Ionicons name="stats-chart" size={12} color="#00E5FF" />
+            <Text style={styles.actionChipText}>Insights</Text>
+          </TouchableOpacity>
+
+          {item.tournamentId && (
+            <>
+              <TouchableOpacity
+                style={styles.actionChip}
+                onPress={() => router.push(`/tournament/${item.tournamentId}`)}
+              >
+                <Ionicons name="grid-outline" size={12} color="#00E676" />
+                <Text style={styles.actionChipText}>Table</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionChip}
+                onPress={() => router.push('/leaderboards')}
+              >
+                <Ionicons name="podium-outline" size={12} color="#FFB300" />
+                <Text style={styles.actionChipText}>Leaderboard</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           {item.status !== 'completed' && (
             isAuthorizedScorer ? (
               <TouchableOpacity
-                style={styles.scoreActionBtn}
+                style={[styles.actionChip, { backgroundColor: '#0284C7', marginLeft: 'auto' }]}
                 onPress={() => router.push(`/match/${item.id}/scorer`)}
               >
-                <Ionicons name="flash" size={14} color="#FFF" />
-                <Text style={styles.scoreActionText}>Score</Text>
+                <Ionicons name="flash" size={12} color="#FFF" />
+                <Text style={[styles.actionChipText, { color: '#FFF' }]}>Score</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.scoreActionBtn, { backgroundColor: '#0284C7' }]}
+                style={[styles.actionChip, { backgroundColor: '#1E2C4F', marginLeft: 'auto' }]}
                 onPress={() => router.push(`/match/${item.id}`)}
               >
-                <Ionicons name="eye" size={14} color="#FFF" />
-                <Text style={styles.scoreActionText}>Follow</Text>
+                <Ionicons name="eye" size={12} color="#FFF" />
+                <Text style={[styles.actionChipText, { color: '#FFF' }]}>Follow</Text>
               </TouchableOpacity>
             )
           )}
@@ -153,6 +176,25 @@ export default function MatchesScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Top App Bar with Navigation Drawer Toggle, Search, Inbox, Notifications */}
+      <View style={styles.appHeaderBar}>
+        <TouchableOpacity style={styles.drawerToggleBtn} onPress={() => setDrawerVisible(true)}>
+          <Ionicons name="menu" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.appHeaderTitle}>CRIC</Text>
+        <View style={styles.headerIconsRow}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/search')}>
+            <Ionicons name="search" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/inbox')}>
+            <Ionicons name="mail-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/notifications')}>
+            <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Current Persona Bar */}
       <View style={styles.userPerspectiveBar}>
         <View style={styles.perspectiveInfo}>
@@ -359,6 +401,12 @@ export default function MatchesScreen() {
           </View>
         }
       />
+
+      {/* Navigation Drawer Modal */}
+      <NavigationDrawerModal
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+      />
     </View>
   );
 }
@@ -367,6 +415,59 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  appHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#070D1E',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2C4F',
+  },
+  drawerToggleBtn: {
+    padding: 6,
+  },
+  appHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#00E676',
+    letterSpacing: 1.5,
+  },
+  headerIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    padding: 6,
+    marginLeft: 8,
+  },
+  deepActionLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1E2C4F',
+  },
+  actionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0C142B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  actionChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginLeft: 4,
   },
   userPerspectiveBar: {
     flexDirection: 'row',

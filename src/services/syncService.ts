@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { IMatchRepository, OutboxEvent } from '../repositories/types';
 import type { Match } from '../types/cricket';
+import { toCanonicalUUID } from '../utils/uuid';
 
 export interface SyncResult {
   processedCount: number;
@@ -136,7 +137,7 @@ export class SyncService {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            matchId: event.matchId,
+            matchId: toCanonicalUUID(event.matchId),
             expectedRevision: event.expectedRevision,
             actionId: event.actionId,
             authorityEpoch: event.authorityEpoch,

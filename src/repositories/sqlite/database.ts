@@ -191,15 +191,24 @@ async function migrateFromAsyncStorage(db: SQLite.SQLiteDatabase): Promise<void>
     for (const match of matchesToMigrate) {
       const isDemo = match.id.includes('demo') || match.title.includes('Demo') ? 1 : 0;
       await db.runAsync(
-        `INSERT OR REPLACE INTO local_matches (id, title, status, tournament_id, revision, authority_epoch, json_data, last_updated, is_demo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO local_matches (id, title, status, tournament_id, revision, authority_epoch, json_data, last_updated, is_demo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          status = excluded.status,
+          tournament_id = excluded.tournament_id,
+          revision = excluded.revision,
+          authority_epoch = excluded.authority_epoch,
+          json_data = excluded.json_data,
+          last_updated = excluded.last_updated,
+          is_demo = excluded.is_demo`,
         [
           match.id,
           match.title,
           match.status,
           match.tournamentId || null,
           match.revision || 0,
-          1,
+          match.authorityEpoch || 1,
           JSON.stringify(match),
           match.lastUpdated || Date.now(),
           isDemo,

@@ -83,6 +83,72 @@ export default function RootLayout() {
             headerBackTitle: 'Back',
           }}
         />
+        <Stack.Screen
+          name="leaderboards/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="awards/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="performance/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="go-live/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="associations/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="clubs/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="app-code/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="inbox/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="search/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="help/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="notifications/index"
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack>
     </CricketProvider>
   );

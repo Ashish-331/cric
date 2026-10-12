@@ -43,8 +43,30 @@ class MockSQLiteDatabase {
 
   async runAsync(sql, params = []) {
     const cleanSql = sql.replace(/\s+/g, ' ').trim();
-    if (cleanSql.includes('INSERT OR REPLACE INTO local_matches') || cleanSql.includes('INSERT INTO local_matches')) {
+    if (cleanSql.includes('INSERT OR REPLACE INTO local_matches')) {
       const [id, title, status, tourneyId, rev, epoch, json, updated, isDemo] = params;
+      // SQLite INSERT OR REPLACE deletes the existing row first, triggering ON DELETE CASCADE
+      const actions = this.tables.get('local_actions');
+      if (actions) {
+        for (const [actId, act] of actions.entries()) {
+          if (act.match_id === id) actions.delete(actId);
+        }
+      }
+      if (!this.tables.has('local_matches')) this.tables.set('local_matches', new Map());
+      this.tables.get('local_matches').set(id, {
+        id,
+        title,
+        status,
+        tournament_id: tourneyId,
+        revision: rev,
+        authority_epoch: epoch,
+        json_data: json,
+        last_updated: updated,
+        is_demo: isDemo,
+      });
+    } else if (cleanSql.includes('INSERT INTO local_matches')) {
+      const [id, title, status, tourneyId, rev, epoch, json, updated, isDemo] = params;
+      // ON CONFLICT DO UPDATE does NOT delete the parent row, preserving local_actions
       if (!this.tables.has('local_matches')) this.tables.set('local_matches', new Map());
       this.tables.get('local_matches').set(id, {
         id,
@@ -154,6 +176,14 @@ class MockSQLiteDatabase {
         return matches.filter((m) => m.is_demo === 0);
       }
       return matches;
+    }
+    if (sql.includes('FROM local_actions')) {
+      const actions = Array.from(this.tables.get('local_actions')?.values() || []);
+      if (sql.includes('WHERE match_id = ?')) {
+        const matchId = params[0];
+        return actions.filter((a) => a.match_id === matchId);
+      }
+      return actions;
     }
     if (sql.includes('FROM sync_outbox')) {
       const outbox = Array.from(this.tables.get('sync_outbox')?.values() || []);

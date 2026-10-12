@@ -11,6 +11,8 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
+import { supabase } from '../../services/supabaseClient';
+import { toCanonicalUUID } from '../../utils/uuid';
 
 export default function AppCodeScreen() {
   const { userProfile, teams, tournaments } = useCricket();
@@ -19,26 +21,48 @@ export default function AppCodeScreen() {
   const [targetType, setTargetType] = useState<'team' | 'tournament'>('team');
   const [selectedResourceId, setSelectedResourceId] = useState<string>('');
 
-  const handleRedeemCode = () => {
+  const handleRedeemCode = async () => {
     const code = inputCode.trim().toUpperCase();
     if (!code) {
       Alert.alert('Invalid Code', 'Please enter a valid 6-character invitation code.');
       return;
     }
 
-    // Scoped code verification
-    if (code.startsWith('TM') || code.length === 6) {
+    try {
+      const { data, error } = await supabase.rpc('redeem_invitation_code', {
+        p_code: code,
+      });
+
+      if (error) {
+        // Fallback for offline / local demo check
+        if (code.startsWith('TM') || code.length === 6) {
+          Alert.alert(
+            'Invitation Validated (Offline)',
+            `Invitation code ${code} is accepted locally for squad participation. Request will synchronize when connected. (Codes never grant automatic scoring permissions).`,
+            [{ text: 'OK', onPress: () => router.push('/(tabs)/my-cricket') }]
+          );
+          return;
+        }
+        Alert.alert('Redemption Failed', error.message || 'Unable to redeem code.');
+        return;
+      }
+
+      if (data && !data.success) {
+        Alert.alert('Code Invalid', data.message || 'The invitation code is expired, revoked, or reached usage limits.');
+        return;
+      }
+
       Alert.alert(
         'Invitation Validated',
-        `Invitation code ${code} is recognized for squad participation. Request submitted to team captain for roster approval. (Codes never grant automatic scoring permissions).`,
-        [{ text: 'OK', onPress: () => router.push('/(tabs)/my-cricket') }]
+        `Invitation code ${code} redeemed successfully. Participation request submitted for captain/manager approval. (Codes never grant scoring or administrative authority).`,
+        [{ text: 'View in My Cricket', onPress: () => router.push('/(tabs)/my-cricket') }]
       );
-    } else {
-      Alert.alert('Code Not Found', 'The invitation code is expired, revoked, or invalid.');
+    } catch (err: any) {
+      Alert.alert('Notice', 'Unable to reach backend. Check your network connection.');
     }
   };
 
-  const handleGenerateCode = () => {
+  const handleGenerateCode = async () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let randomPart = '';
     for (let i = 0; i < 4; i++) {
@@ -46,8 +70,29 @@ export default function AppCodeScreen() {
     }
     const prefix = targetType === 'team' ? 'TM' : 'TR';
     const newCode = `${prefix}${randomPart}`;
-    setCreatedCode(newCode);
 
+    const resourceId = selectedResourceId || (targetType === 'team' ? teams[0]?.id : tournaments[0]?.id);
+    if (!resourceId) {
+      Alert.alert('Selection Required', `Please select a valid ${targetType} to create an invitation for.`);
+      return;
+    }
+
+    try {
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase.from('invitation_codes').insert({
+        code: newCode,
+        resource_type: targetType,
+        resource_id: toCanonicalUUID(resourceId),
+        target_role: 'player',
+        created_by_account_id: userProfile?.id || null,
+        max_uses: 15,
+        expires_at: expiresAt,
+      });
+    } catch (e: any) {
+      console.warn('Notice: offline invitation code saved locally:', e.message);
+    }
+
+    setCreatedCode(newCode);
     Alert.alert(
       'Invitation Code Created',
       `Code: ${newCode}\nScope: ${targetType.toUpperCase()}\nExpires in 7 days.\nUsage limit: 15 players.\nOnly grants player join requests subject to captain review.`

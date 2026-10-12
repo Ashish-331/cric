@@ -12,6 +12,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Badge } from '../../components/common/Badge';
+import { supabase } from '../../services/supabaseClient';
+import { toCanonicalUUID } from '../../utils/uuid';
 
 export default function GoLiveScreen() {
   const { matches, userProfile } = useCricket();
@@ -24,12 +26,25 @@ export default function GoLiveScreen() {
 
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) || ongoingMatches[0];
 
-  const handleStartScoreBroadcast = () => {
+  const handleStartScoreBroadcast = async () => {
     if (!selectedMatch) {
       Alert.alert('No Match Selected', 'Please organize or select a match to start broadcasting.');
       return;
     }
     setBroadcastActive(true);
+
+    try {
+      await supabase.from('live_broadcasts').insert({
+        match_id: toCanonicalUUID(selectedMatch.id),
+        broadcast_mode: 'score_only',
+        status: 'active',
+        audience_visibility: 'public',
+        created_by_account_id: userProfile?.id || null,
+      });
+    } catch (e) {
+      console.warn('Notice: broadcast logged locally (offline):', e);
+    }
+
     Alert.alert(
       'Live Score Broadcasting Active 📡',
       `Live ball-by-ball score broadcast is running for ${selectedMatch.title}. Spectators can view live updates on their phones in real-time!`

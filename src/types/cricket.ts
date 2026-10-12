@@ -191,7 +191,13 @@ export type InningsAction =
   | { type: 'SELECT_BATTER'; slot: 'striker' | 'nonStriker'; playerId: string; timestamp: number }
   | { type: 'SWAP_ENDS'; timestamp: number }
   | { type: 'UNDO'; timestamp: number }
-  | { type: 'END_INNINGS'; timestamp: number };
+  | {
+      type: 'END_INNINGS';
+      timestamp: number;
+      strikerId?: string;
+      nonStrikerId?: string;
+      bowlerId?: string;
+    };
 
 export interface BatterStats {
   playerId: string;

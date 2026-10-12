@@ -42,8 +42,37 @@ const DEFAULT_ASSOCIATIONS: Association[] = [
   },
 ];
 
+import { supabase } from '../../services/supabaseClient';
+
 export default function AssociationsScreen() {
   const [associations, setAssociations] = useState<Association[]>(DEFAULT_ASSOCIATIONS);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadAssociations() {
+      try {
+        const { data } = await supabase.from('associations').select('*');
+        if (data && data.length > 0 && isMounted) {
+          const mapped: Association[] = data.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            shortName: d.short_name,
+            city: d.city || 'District',
+            state: d.state || 'India',
+            memberClubsCount: 0,
+            activeTournamentsCount: 0,
+          }));
+          setAssociations(mapped);
+        }
+      } catch (e) {
+        // Fallback to default records offline
+      }
+    }
+    loadAssociations();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleCreateAssoc = () => {
     Alert.alert(

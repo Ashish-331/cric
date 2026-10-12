@@ -32,6 +32,8 @@ import { StatsRollupEngine } from '../engine/statsRollupEngine';
 import { StorageService, UserProfile, PRESET_USERS } from '../storage/storageService';
 import { matchRepository } from '../repositories';
 import { SyncService } from '../services/syncService';
+import { CanonicalMatchService } from '../services/canonicalMatchService';
+import { CanonicalTournamentService } from '../services/canonicalTournamentService';
 import { getDatabase } from '../repositories/sqlite/database';
 import { generateUUID } from '../utils/uuid';
 
@@ -1121,6 +1123,9 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const action: InningsAction = {
           type: 'END_INNINGS',
           timestamp: Date.now(),
+          strikerId,
+          nonStrikerId,
+          bowlerId,
         };
 
         try {
@@ -1224,6 +1229,22 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       await matchRepository.saveMatch(newMatch);
       await StorageService.saveMatch(newMatch);
+
+      // Attempt canonical match creation in backend
+      try {
+        const canonicalResult = await CanonicalMatchService.createCanonicalMatch(
+          newMatch,
+          userProfile?.id
+        );
+        if (canonicalResult.success && canonicalResult.match) {
+          newMatch.isSynced = true;
+          await matchRepository.saveMatch(canonicalResult.match);
+          await StorageService.saveMatch(canonicalResult.match);
+        }
+      } catch (cloudErr) {
+        console.warn('Canonical match creation queued locally (offline):', cloudErr);
+      }
+
       await refreshMatches();
       setActiveMatch(newMatch);
 
@@ -1292,7 +1313,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const newTournament: Tournament = {
-        id: `tourn_${Date.now()}`,
+        id: generateUUID(),
         name: params.name,
         format: params.format,
         totalOvers: params.totalOvers,
@@ -1306,6 +1327,16 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
 
       await StorageService.saveTournament(newTournament);
+
+      try {
+        await CanonicalTournamentService.createCanonicalTournament(
+          newTournament,
+          userProfile?.id
+        );
+      } catch (cloudErr) {
+        console.warn('Tournament queued locally (offline):', cloudErr);
+      }
+
       await refreshTournaments();
       return newTournament;
     },

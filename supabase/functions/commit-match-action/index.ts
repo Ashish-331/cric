@@ -7,6 +7,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import {
   CricketEngine,
   validateDeliveryInput,
+  createInitialInnings,
 } from '../_shared/cricketEngine.ts';
 import type {
   Match,
@@ -159,6 +160,47 @@ serve(async (req: Request) => {
           { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
       }
+
+      // Participant Squad Eligibility Check (if playing lineups are specified)
+      const battingSquad = currentInnings.battingTeamId === currentMatchState.team1?.id
+        ? currentMatchState.playingXITeam1
+        : currentMatchState.playingXITeam2;
+      const bowlingSquad = currentInnings.bowlingTeamId === currentMatchState.team1?.id
+        ? currentMatchState.playingXITeam1
+        : currentMatchState.playingXITeam2;
+
+      if (battingSquad && battingSquad.length > 0) {
+        if (!battingSquad.includes(action.delivery.strikerId)) {
+          return new Response(
+            JSON.stringify({
+              error: 'INVALID_PARTICIPANT',
+              reason: `Striker ${action.delivery.strikerId} is not in the batting squad`,
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (!battingSquad.includes(action.delivery.nonStrikerId)) {
+          return new Response(
+            JSON.stringify({
+              error: 'INVALID_PARTICIPANT',
+              reason: `Non-striker ${action.delivery.nonStrikerId} is not in the batting squad`,
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
+      if (bowlingSquad && bowlingSquad.length > 0) {
+        if (!bowlingSquad.includes(action.delivery.bowlerId)) {
+          return new Response(
+            JSON.stringify({
+              error: 'INVALID_PARTICIPANT',
+              reason: `Bowler ${action.delivery.bowlerId} is not in the bowling squad`,
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     }
 
     // 7. Compute Next State Progression using CricketEngine
@@ -260,6 +302,53 @@ serve(async (req: Request) => {
           currentMatchState.targetRuns
         );
         nextMatchState = { ...nextMatchState, innings: updatedInningsArray };
+      } else if (action.type === 'END_INNINGS') {
+        const finishedInnings: Innings = {
+          ...currentInnings,
+          isCompleted: true,
+          completedReason: currentInnings.completedReason || 'Innings Concluded',
+        };
+        updatedInningsArray[innIndex] = finishedInnings;
+
+        if (innIndex === 0) {
+          // Transition from Innings 1 to Innings 2
+          const targetRuns = finishedInnings.totalRuns + 1;
+          const battingTeamId = finishedInnings.bowlingTeamId;
+          const bowlingTeamId = finishedInnings.battingTeamId;
+
+          const inn2 = createInitialInnings(
+            2,
+            battingTeamId,
+            bowlingTeamId,
+            action.strikerId,
+            action.nonStrikerId,
+            action.bowlerId
+          );
+
+          nextMatchState = {
+            ...nextMatchState,
+            innings: [finishedInnings, inn2],
+            currentInningsIndex: 1,
+            targetRuns,
+            status: 'live',
+          };
+        } else {
+          // 2nd innings ended -> Match completed
+          nextMatchState = {
+            ...nextMatchState,
+            innings: updatedInningsArray,
+            status: 'completed',
+            result: CricketEngine.evaluateMatchResult({
+              ...nextMatchState,
+              innings: updatedInningsArray,
+            }) || 'Match Concluded',
+          };
+        }
+      } else {
+        return new Response(
+          JSON.stringify({ error: `Unsupported action type: ${(action as any).type}` }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
       }
     }
 

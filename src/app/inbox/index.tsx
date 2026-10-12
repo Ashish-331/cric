@@ -51,11 +51,59 @@ const DEFAULT_INBOX_ITEMS: InboxItem[] = [
   },
 ];
 
+import { supabase } from '../../services/supabaseClient';
+
 export default function InboxScreen() {
   const [items, setItems] = useState<InboxItem[]>(DEFAULT_INBOX_ITEMS);
 
-  const markAllRead = () => {
+  React.useEffect(() => {
+    let isMounted = true;
+    async function fetchNotifications() {
+      try {
+        const { data } = await supabase
+          .from('notification_records')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (data && data.length > 0 && isMounted) {
+          const mapped: InboxItem[] = data.map((n: any) => ({
+            id: n.id,
+            category:
+              n.category === 'scorer_assignment'
+                ? 'scorer'
+                : n.category === 'entry_update'
+                ? 'entry'
+                : n.category === 'result_approval'
+                ? 'result'
+                : 'system',
+            title: n.title,
+            message: n.message,
+            timeAgo: 'Recent',
+            isRead: n.is_read,
+            route: n.action_route || '/(tabs)/my-cricket',
+          }));
+          setItems(mapped);
+        }
+      } catch (e) {
+        // Fallback to defaults offline
+      }
+    }
+    fetchNotifications();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const markAllRead = async () => {
     setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    try {
+      await supabase
+        .from('notification_records')
+        .update({ is_read: true })
+        .eq('is_read', false);
+    } catch (e) {
+      // Local fallback
+    }
   };
 
   const handleItemPress = (item: InboxItem) => {

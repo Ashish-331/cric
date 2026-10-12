@@ -43,8 +43,36 @@ const DEFAULT_CLUBS: ClubItem[] = [
   },
 ];
 
+import { supabase } from '../../services/supabaseClient';
+
 export default function ClubsScreen() {
   const { teams } = useCricket();
+  const [clubs, setClubs] = React.useState<ClubItem[]>(DEFAULT_CLUBS);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadClubs() {
+      try {
+        const { data } = await supabase.from('clubs').select('*');
+        if (data && data.length > 0 && isMounted) {
+          const mapped: ClubItem[] = data.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            associationName: 'Member Cricket Club',
+            city: d.city || 'District',
+            teamsCount: 2,
+          }));
+          setClubs(mapped);
+        }
+      } catch (e) {
+        // Fallback to defaults offline
+      }
+    }
+    loadClubs();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -68,7 +96,7 @@ export default function ClubsScreen() {
       </View>
 
       <FlatList
-        data={DEFAULT_CLUBS}
+        data={clubs}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (

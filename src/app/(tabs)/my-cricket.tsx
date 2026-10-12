@@ -15,6 +15,7 @@ import { Match, Team, Tournament } from '../../types/cricket';
 import { Colors } from '../../utils/colors';
 import { Badge } from '../../components/common/Badge';
 import { PlayerPerformanceService } from '../../services/playerPerformanceService';
+import { CanonicalMatchService } from '../../services/canonicalMatchService';
 import { NavigationDrawerModal } from '../../components/navigation/NavigationDrawerModal';
 
 type SubSection = 'matches' | 'tournaments' | 'teams' | 'stats' | 'highlights';
@@ -34,20 +35,62 @@ export default function MyCricketScreen() {
   const [matchFilter, setMatchFilter] = useState<MatchFilter>('your');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [cloudMatches, setCloudMatches] = useState<Match[]>([]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function fetchCanonical() {
+      try {
+        const remote = await CanonicalMatchService.listCanonicalMatches();
+        if (remote && isMounted) {
+          setCloudMatches(remote);
+        }
+      } catch (err) {
+        console.warn('Notice: offline/canonical fetch in My Cricket:', err);
+      }
+    }
+    fetchCanonical();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshMatches(), refreshTournaments()]);
-    setRefreshing(false);
+    try {
+      const [remote] = await Promise.all([
+        CanonicalMatchService.listCanonicalMatches(),
+        refreshMatches(),
+        refreshTournaments(),
+      ]);
+      if (remote) setCloudMatches(remote);
+    } catch (e) {
+      console.warn('Refresh notice:', e);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const currentUserId = userProfile?.id || '';
+
+  // Merge canonical cloud matches and local cache
+  const allMergedMatches = React.useMemo(() => {
+    const map = new Map<string, Match>();
+    cloudMatches.forEach((m) => map.set(m.id, m));
+    matches.forEach((m) => {
+      const existing = map.get(m.id);
+      if (!existing || (m.revision || 0) >= (existing.revision || 0)) {
+        map.set(m.id, m);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.lastUpdated - a.lastUpdated);
+  }, [matches, cloudMatches]);
 
   // Canonical filtering powered by PlayerPerformanceService
   const filteredMatches = PlayerPerformanceService.getFilteredMatchesForUser(
     currentUserId,
     matchFilter,
-    matches,
+    allMergedMatches,
     teams,
     tournaments
   );

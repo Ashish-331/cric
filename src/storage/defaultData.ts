@@ -368,27 +368,36 @@ export const DEFAULT_TEAMS: Team[] = [
     id: 'team_mumbai',
     name: 'Mumbai Strikers',
     shortName: 'MUM',
+    city: 'Mumbai',
     primaryColor: '#004BA0',
     captainPlayerId: 'p1_1', // Rohit Sharma
+    captainName: 'Rohit Sharma',
     createdByUserId: 'user_rohit',
+    inviteCode: 'INV-MUMBAI',
     players: DEFAULT_PLAYERS_TEAM1,
   },
   {
     id: 'team_bangalore',
     name: 'Royal Challengers',
     shortName: 'RCB',
+    city: 'Bengaluru',
     primaryColor: '#D32F2F',
     captainPlayerId: 'p2_2', // Faf du Plessis
+    captainName: 'Faf du Plessis',
     createdByUserId: 'user_faf',
+    inviteCode: 'INV-BLR01',
     players: DEFAULT_PLAYERS_TEAM2,
   },
   {
     id: 'team_chennai',
     name: 'Chennai Super Kings',
     shortName: 'CSK',
+    city: 'Chennai',
     primaryColor: '#FBC02D',
     captainPlayerId: 'p3_1',
+    captainName: 'Ruturaj Gaikwad',
     createdByUserId: 'user_rutu',
+    inviteCode: 'INV-CSK01',
     players: [
       {
         id: 'p3_1',

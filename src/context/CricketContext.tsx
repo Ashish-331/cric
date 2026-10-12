@@ -80,7 +80,18 @@ interface CricketContextType {
   declineJoinRequest: (requestId: string) => Promise<void>;
   // Team Management
   saveTeam: (team: Team) => Promise<void>;
-  createNewTeam: (name: string, shortName: string, primaryColor: string) => Promise<Team>;
+  createNewTeam: (
+    name: string,
+    shortName: string,
+    primaryColor: string,
+    options?: {
+      city?: string;
+      addSelfAsPlayer?: boolean;
+      captainName?: string;
+      captainPhone?: string;
+      logoUrl?: string;
+    }
+  ) => Promise<Team>;
   // Ghost Accounts
   addGhostPlayerToTeam: (teamId: string, name: string, phone: string, role?: PlayingRole) => Promise<Player>;
   claimGhostProfile: (phone: string) => Promise<{ claimedCount: number; firstClaimedPlayerId?: string }>;
@@ -359,30 +370,69 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setJoinRequests(result.allRequests);
   }, []);
 
-  // Create new team by user (user becomes Captain)
+  // Create new team by user (with Add Yourself checkbox support)
   const createNewTeam = useCallback(
-    async (name: string, shortName: string, primaryColor: string): Promise<Team> => {
-      const captainPlayer: Player = {
-        id: userProfile?.claimedPlayerId || `p_${Date.now()}_c`,
-        name: userProfile?.name || 'Captain',
-        role: userProfile?.playingRole || 'all-rounder',
-        battingHand: userProfile?.battingHand || 'right',
-        bowlingStyle: userProfile?.bowlingStyle || 'fast-medium',
-        phoneNumber: userProfile?.phoneNumber,
-        isCaptain: true,
-        isVerified: userProfile?.isVerified ?? true,
-        careerStats: StatsRollupEngine.createEmptyCareerStats(),
-        recentScores: [],
-      };
+    async (
+      name: string,
+      shortName: string,
+      primaryColor: string,
+      options?: {
+        city?: string;
+        addSelfAsPlayer?: boolean;
+        captainName?: string;
+        captainPhone?: string;
+        logoUrl?: string;
+      }
+    ): Promise<Team> => {
+      const addSelf = options?.addSelfAsPlayer ?? true;
+      let players: Player[] = [];
+      let captainPlayerId: string | undefined = undefined;
+
+      if (addSelf) {
+        const creatorPlayer: Player = {
+          id: userProfile?.claimedPlayerId || `p_${Date.now()}_c`,
+          name: userProfile?.name || 'Manager & Player',
+          role: userProfile?.playingRole || 'all-rounder',
+          battingHand: userProfile?.battingHand || 'right',
+          bowlingStyle: userProfile?.bowlingStyle || 'fast-medium',
+          phoneNumber: userProfile?.phoneNumber,
+          isCaptain: true,
+          isVerified: userProfile?.isVerified ?? true,
+          careerStats: StatsRollupEngine.createEmptyCareerStats(),
+          recentScores: [],
+        };
+        players.push(creatorPlayer);
+        captainPlayerId = creatorPlayer.id;
+      } else if (options?.captainName && options.captainName.trim()) {
+        const designatedCaptain: Player = {
+          id: `p_${Date.now()}_cap`,
+          name: options.captainName.trim(),
+          role: 'all-rounder',
+          battingHand: 'right',
+          phoneNumber: options.captainPhone?.trim() || undefined,
+          isCaptain: true,
+          isGuest: true,
+          careerStats: StatsRollupEngine.createEmptyCareerStats(),
+          recentScores: [],
+        };
+        players.push(designatedCaptain);
+        captainPlayerId = designatedCaptain.id;
+      }
 
       const newTeam: Team = {
         id: `team_${Date.now()}`,
         name,
         shortName: shortName.toUpperCase(),
         primaryColor,
-        captainPlayerId: captainPlayer.id,
+        city: options?.city,
+        logoUrl: options?.logoUrl,
+        captainPlayerId,
+        captainName: options?.captainName,
+        captainPhone: options?.captainPhone,
         createdByUserId: userProfile?.id,
-        players: [captainPlayer],
+        managerUserId: userProfile?.id,
+        inviteCode: `INV-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        players,
       };
 
       await StorageService.saveTeam(newTeam);
@@ -391,7 +441,11 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Link user to this team
       if (userProfile) {
-        await updateUserProfile({ teamId: newTeam.id, role: 'captain', claimedPlayerId: captainPlayer.id });
+        await updateUserProfile({
+          teamId: newTeam.id,
+          role: addSelf ? 'captain' : userProfile.role,
+          claimedPlayerId: addSelf ? captainPlayerId : userProfile.claimedPlayerId,
+        });
       }
 
       return newTeam;
@@ -1172,7 +1226,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Only require verified profile for tournaments; guest local friendly matches are always allowed offline
       if (params.tournamentId && userProfile && (!userProfile.isVerified || userProfile.isGuest)) {
-        throw new Error('Please verify your phone number to organize tournaments.');
+        throw new Error('Please sign in with a verified account to organize tournaments.');
       }
 
       const isScheduled = params.status === 'scheduled' || !tossWinnerId;

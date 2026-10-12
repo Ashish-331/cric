@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Share,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -370,13 +371,24 @@ export default function TournamentDetailScreen() {
     }
   };
 
+  const handleShareTournamentInvite = async () => {
+    try {
+      await Share.share({
+        title: `Join ${tournament.name} on Cric`,
+        message: `Join ${tournament.name} on Cric! Use tournament ID/Code: ${tournament.id}\nSubmit your team and roster via the Cric app.`,
+      });
+    } catch (e) {
+      // dismissed
+    }
+  };
+
   const handleScheduleMatchPress = () => {
     if (userProfile && (!userProfile.isVerified || userProfile.isGuest)) {
       Alert.alert(
-        'Verification Required',
-        'Please verify your phone number to organize tournaments and schedule matches.',
+        'Authentication Required',
+        'Please sign in with an authenticated account to organize tournaments and schedule matches.',
         [
-          { text: 'Verify Phone', onPress: () => router.push('/auth/login') },
+          { text: 'Sign In Now', onPress: () => router.push('/auth/login') },
           { text: 'Cancel', style: 'cancel' },
         ]
       );
@@ -895,13 +907,22 @@ export default function TournamentDetailScreen() {
           <View style={styles.teamsTabContainer}>
             <View style={styles.matchesHeaderRow}>
               <Text style={styles.sectionHeading}>Enrolled Teams ({tournament.teams.length})</Text>
-              <TouchableOpacity
-                style={styles.addMatchSmallBtn}
-                onPress={() => setAddTeamModalVisible(true)}
-              >
-                <Ionicons name="add" size={14} color="#FFF" />
-                <Text style={styles.addMatchSmallBtnText}>Enroll Team</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.addMatchSmallBtn, { backgroundColor: '#1E2C4F' }]}
+                  onPress={handleShareTournamentInvite}
+                >
+                  <Ionicons name="share-social-outline" size={13} color="#00E5FF" />
+                  <Text style={[styles.addMatchSmallBtnText, { color: '#00E5FF' }]}>Invite Captains</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addMatchSmallBtn}
+                  onPress={() => setAddTeamModalVisible(true)}
+                >
+                  <Ionicons name="add" size={14} color="#FFF" />
+                  <Text style={styles.addMatchSmallBtnText}>Enroll Team</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {tournament.teams.map((t) => (

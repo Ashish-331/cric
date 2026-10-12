@@ -730,6 +730,7 @@ export class StorageService {
 
     entry.status = status;
     entry.reviewedAt = Date.now();
+    entry.reviewedByUserId = reviewerUserId;
     if (status === 'rejected') {
       entry.rejectionReason = reason;
     } else if (status === 'changes_requested') {

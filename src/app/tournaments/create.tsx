@@ -71,11 +71,11 @@ export default function CreateTournamentScreen() {
     if (!isVerifiedUser) {
       CricketHaptics.wicket();
       Alert.alert(
-        'Verification Required',
-        'Organizing tournaments requires phone verification to ensure legitimate grassroots leagues and scoring governance.',
+        'Authentication Required',
+        'Organizing tournaments requires an authenticated Cric account to ensure legitimate grassroots governance and standings.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Verify Now', onPress: () => router.push('/auth/login') },
+          { text: 'Sign In Now', onPress: () => router.push('/auth/login') },
         ]
       );
       return;
@@ -140,9 +140,9 @@ export default function CreateTournamentScreen() {
             <View style={styles.warnRow}>
               <Ionicons name="shield-half" size={24} color="#D97706" />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.warnTitle}>Phone Verification Required</Text>
+                <Text style={styles.warnTitle}>Account Authentication Required</Text>
                 <Text style={styles.warnSub}>
-                  You are currently logged in as {userProfile?.name || 'Guest'}. Organizing tournaments and scheduling fixtures requires a verified phone number.
+                  You are currently logged in as a guest. Organizing tournaments and managing official fixtures requires an authenticated Cric account.
                 </Text>
               </View>
             </View>
@@ -150,7 +150,7 @@ export default function CreateTournamentScreen() {
               style={styles.verifyBtn}
               onPress={() => router.push('/auth/login')}
             >
-              <Text style={styles.verifyBtnText}>Verify Mobile Number Now</Text>
+              <Text style={styles.verifyBtnText}>Sign In / Register Now</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -166,6 +166,28 @@ export default function CreateTournamentScreen() {
             value={name}
             onChangeText={setName}
           />
+
+          {/* City / Venue Row */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>City / Town *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Mumbai"
+                placeholderTextColor="#94A3B8"
+                defaultValue="Mumbai"
+              />
+            </View>
+            <View style={{ flex: 1.5 }}>
+              <Text style={styles.label}>Ground / Venue</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Oval Maidan"
+                placeholderTextColor="#94A3B8"
+                defaultValue="Gymkhana Grounds"
+              />
+            </View>
+          </View>
 
           {/* Format Chips */}
           <Text style={[styles.label, { marginTop: 16 }]}>Match Format</Text>

@@ -1,29 +1,61 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  TextInput,
+  ScrollView,
+} from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Colors } from '../../utils/colors';
-import { PlayingRole } from '../../types/cricket';
+import { PlayingRole, BattingHand, BowlingStyle, Player, Team } from '../../types/cricket';
 import { CricketHaptics } from '../../services/haptics';
+import { StatsRollupEngine } from '../../engine/statsRollupEngine';
+
+const ROLES: { key: PlayingRole; label: string }[] = [
+  { key: 'batter', label: 'Batter' },
+  { key: 'bowler', label: 'Bowler' },
+  { key: 'all-rounder', label: 'All-Rounder' },
+  { key: 'wicketkeeper', label: 'Wicketkeeper' },
+];
+
+const BOWLING_STYLES: { key: BowlingStyle; label: string }[] = [
+  { key: 'fast', label: 'Fast' },
+  { key: 'fast-medium', label: 'Fast-Medium' },
+  { key: 'medium', label: 'Medium Pace' },
+  { key: 'spin-off', label: 'Off Spin' },
+  { key: 'spin-leg', label: 'Leg Spin' },
+  { key: 'orthodox', label: 'Left-Arm Orthodox' },
+];
 
 export default function TeamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
     teams,
+    saveTeam,
     userProfile,
     joinRequests,
     sendJoinRequest,
     approveJoinRequest,
     declineJoinRequest,
-    addGhostPlayerToTeam,
   } = useCricket();
 
-  const [isGhostModalVisible, setIsGhostModalVisible] = useState(false);
-  const [ghostName, setGhostName] = useState('');
-  const [ghostPhone, setGhostPhone] = useState('');
-  const [ghostRole, setGhostRole] = useState<PlayingRole>('all-rounder');
-  const [isAddingGhost, setIsAddingGhost] = useState(false);
+  const [isAddMemberModalVisible, setIsAddMemberModalVisible] = useState(false);
+
+  // New Member Form State
+  const [playerName, setPlayerName] = useState('');
+  const [playerRole, setPlayerRole] = useState<PlayingRole>('all-rounder');
+  const [battingHand, setBattingHand] = useState<BattingHand>('right');
+  const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle>('fast-medium');
+  const [playerPhone, setPlayerPhone] = useState('');
+  const [isMatchGuestOnly, setIsMatchGuestOnly] = useState(false);
+  const [isSubmittingMember, setIsSubmittingMember] = useState(false);
 
   const team = teams.find((t) => t.id === id);
 
@@ -35,71 +67,194 @@ export default function TeamDetailScreen() {
     );
   }
 
-  const currentUserId = userProfile?.claimedPlayerId;
-  const isCaptain = team.captainPlayerId === currentUserId || team.createdByUserId === userProfile?.id;
-  const isMember = team.players.some((p) => p.id === currentUserId || p.name === userProfile?.name);
+  const currentUserId = userProfile?.id;
+  const claimedPlayerId = userProfile?.claimedPlayerId;
 
-  const pendingRequests = joinRequests.filter((r) => r.teamId === team.id && r.status === 'pending');
+  // Authorization check
+  const isManagerOrOwner =
+    team.createdByUserId === currentUserId ||
+    team.managerUserId === currentUserId;
+
+  const isCaptain =
+    team.captainPlayerId === claimedPlayerId ||
+    isManagerOrOwner;
+
+  const isMember = team.players.some(
+    (p) =>
+      p.id === claimedPlayerId ||
+      (userProfile?.phoneNumber && p.phoneNumber === userProfile.phoneNumber)
+  );
+
+  const pendingRequests = joinRequests.filter(
+    (r) => r.teamId === team.id && r.status === 'pending'
+  );
+
   const hasRequested = joinRequests.some(
     (r) =>
       r.teamId === team.id &&
-      (r.playerId === currentUserId || r.playerName === userProfile?.name) &&
+      (r.playerId === claimedPlayerId || r.playerName === userProfile?.name) &&
       r.status === 'pending'
   );
 
   const handleRequestToJoin = async () => {
     try {
+      CricketHaptics.toggle();
       await sendJoinRequest(team.id);
-      Alert.alert('Request Sent!', `Your request to join ${team.name} has been sent to the Captain.`);
+      Alert.alert(
+        'Request Sent! ⏳',
+        `Your request to join ${team.name} has been sent to the manager/captain.`
+      );
     } catch (err: any) {
       Alert.alert('Error', err.message);
     }
   };
 
-  const handleAddGhostPlayer = async () => {
-    if (!ghostName.trim()) {
-      Alert.alert('Missing Name', 'Please enter the player name.');
+  const handleSetCaptain = async (player: Player) => {
+    if (!isCaptain && !isManagerOrOwner) return;
+    Alert.alert(
+      'Set Team Captain',
+      `Appoint ${player.name} as the official default captain for ${team.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            CricketHaptics.milestone();
+            const updatedPlayers = team.players.map((p) => ({
+              ...p,
+              isCaptain: p.id === player.id,
+            }));
+
+            const updatedTeam: Team = {
+              ...team,
+              captainPlayerId: player.id,
+              captainName: player.name,
+              players: updatedPlayers,
+            };
+
+            await saveTeam(updatedTeam);
+            Alert.alert('Captain Appointed! 🏏', `${player.name} is now the captain.`);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRemovePlayer = (player: Player) => {
+    if (!isCaptain && !isManagerOrOwner) return;
+    Alert.alert(
+      'Remove Member',
+      `Remove ${player.name} from the active roster? (Historical scorecards and career statistics will not be deleted).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            CricketHaptics.wicket();
+            const updatedPlayers = team.players.filter((p) => p.id !== player.id);
+            const isRemovingCaptain = team.captainPlayerId === player.id;
+
+            const updatedTeam: Team = {
+              ...team,
+              captainPlayerId: isRemovingCaptain ? undefined : team.captainPlayerId,
+              captainName: isRemovingCaptain ? undefined : team.captainName,
+              players: updatedPlayers,
+            };
+
+            await saveTeam(updatedTeam);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAddMemberSubmit = async () => {
+    if (!playerName.trim()) {
+      Alert.alert('Name Required', 'Please enter player full name.');
       return;
     }
-    if (!ghostPhone.trim()) {
-      Alert.alert('Missing Mobile Number', 'Please enter a mobile number so the player can claim their profile & career stats later.');
+
+    // Check duplicate membership
+    const cleanName = playerName.trim().toLowerCase();
+    const existing = team.players.find(
+      (p) => p.name.toLowerCase() === cleanName
+    );
+    if (existing) {
+      Alert.alert(
+        'Duplicate Member',
+        `A player named "${existing.name}" is already on this team's roster.`
+      );
       return;
     }
 
     try {
-      setIsAddingGhost(true);
+      setIsSubmittingMember(true);
       CricketHaptics.milestone();
-      await addGhostPlayerToTeam(team.id, ghostName.trim(), ghostPhone.trim(), ghostRole);
+
+      const newPlayer: Player = {
+        id: `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: playerName.trim(),
+        role: playerRole,
+        battingHand,
+        bowlingStyle: playerRole === 'batter' ? undefined : bowlingStyle,
+        phoneNumber: playerPhone.trim() || undefined,
+        isGuest: true, // unclaimed player profile
+        isMatchGuest: isMatchGuestOnly,
+        isCaptain: team.players.length === 0, // first player is default captain if roster was empty
+        isWicketkeeper: playerRole === 'wicketkeeper',
+        careerStats: StatsRollupEngine.createEmptyCareerStats(),
+        recentScores: [],
+      };
+
+      const updatedPlayers = [...team.players, newPlayer];
+      const updatedTeam: Team = {
+        ...team,
+        captainPlayerId: team.captainPlayerId || (newPlayer.isCaptain ? newPlayer.id : undefined),
+        captainName: team.captainName || (newPlayer.isCaptain ? newPlayer.name : undefined),
+        players: updatedPlayers,
+      };
+
+      await saveTeam(updatedTeam);
+
+      // Reset form
+      setPlayerName('');
+      setPlayerPhone('');
+      setIsMatchGuestOnly(false);
+      setIsAddMemberModalVisible(false);
+
       Alert.alert(
-        'Player Added! 👻',
-        `${ghostName.trim()} has been added to ${team.name}. When they sign in with mobile number "${ghostPhone.trim()}", all match performances and stats will be linked automatically!`
+        'Member Added! 🏏',
+        `${newPlayer.name} has been added to ${team.name} as a ${isMatchGuestOnly ? 'match-only guest' : 'permanent roster member'}.`
       );
-      setGhostName('');
-      setGhostPhone('');
-      setIsGhostModalVisible(false);
     } catch (err: any) {
       CricketHaptics.wicket();
-      Alert.alert('Error', err.message || 'Failed to add ghost player.');
+      Alert.alert('Error', err.message || 'Failed to add member.');
     } finally {
-      setIsAddingGhost(false);
+      setIsSubmittingMember(false);
     }
   };
 
   return (
     <View style={styles.container}>
       {/* Header Banner */}
-      <View style={[styles.headerBanner, { borderLeftColor: team.primaryColor }]}>
+      <View style={[styles.headerBanner, { borderLeftColor: team.primaryColor || '#004BA0' }]}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.teamTitle}>{team.name}</Text>
             <Text style={styles.teamSub}>
-              Code: {team.shortName} • {team.players.length} Squad Members
+              {team.shortName} • {team.city || 'Club'} • {team.players.length} Members
             </Text>
+            {team.captainName ? (
+              <Text style={styles.headerCaptainText}>
+                Captain: {team.captainName}
+              </Text>
+            ) : null}
           </View>
 
-          {isCaptain ? (
-            <View style={styles.roleTag}>
-              <Text style={styles.roleTagText}>Captain</Text>
+          {isManagerOrOwner ? (
+            <View style={styles.roleTagManager}>
+              <Text style={styles.roleTagManagerText}>Manager</Text>
             </View>
           ) : isMember ? (
             <View style={[styles.roleTag, { backgroundColor: '#ECFDF5' }]}>
@@ -111,21 +266,25 @@ export default function TeamDetailScreen() {
               disabled={hasRequested}
               onPress={handleRequestToJoin}
             >
-              <Text style={styles.joinBtnText}>{hasRequested ? 'Pending ⏳' : 'Request to Join'}</Text>
+              <Text style={styles.joinBtnText}>
+                {hasRequested ? 'Pending ⏳' : 'Request to Join'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Captain's Pending Requests Box */}
-      {isCaptain && pendingRequests.length > 0 && (
+      {/* Pending Join Requests Box (Manager/Captain Only) */}
+      {(isManagerOrOwner || isCaptain) && pendingRequests.length > 0 && (
         <View style={styles.inboxCard}>
-          <Text style={styles.inboxTitle}>Pending Join Requests ({pendingRequests.length})</Text>
+          <Text style={styles.inboxTitle}>
+            Pending Join Requests ({pendingRequests.length})
+          </Text>
           {pendingRequests.map((req) => (
             <View key={req.id} style={styles.reqRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.reqName}>{req.playerName}</Text>
-                <Text style={styles.reqSub}>{req.playerRole.toUpperCase()} • {req.playerPhone || 'Guest'}</Text>
+                <Text style={styles.reqSub}>{req.playerRole.toUpperCase()}</Text>
               </View>
               <TouchableOpacity
                 style={styles.approveBtn}
@@ -144,145 +303,281 @@ export default function TeamDetailScreen() {
         </View>
       )}
 
-      {/* Squad Header Row */}
+      {/* Roster Section Header */}
       <View style={styles.squadHeaderRow}>
-        <Text style={styles.squadHeading}>Official Squad Roster ({team.players.length})</Text>
-        {(isCaptain || userProfile?.role === 'organizer' || userProfile?.isVerified) && (
+        <View>
+          <Text style={styles.squadHeading}>Official Team Sheet</Text>
+          <Text style={styles.squadSubText}>
+            {team.players.length} registered players on durable roster
+          </Text>
+        </View>
+
+        {(isManagerOrOwner || isCaptain) && (
           <TouchableOpacity
-            style={styles.addGhostBtn}
+            style={styles.addMemberBtn}
             onPress={() => {
               CricketHaptics.toggle();
-              setIsGhostModalVisible(true);
+              setIsAddMemberModalVisible(true);
             }}
           >
-            <Ionicons name="person-add" size={13} color="#FFF" />
-            <Text style={styles.addGhostBtnText}>Add Player (Unlinked)</Text>
+            <Ionicons name="person-add" size={14} color="#070D1E" />
+            <Text style={styles.addMemberBtnText}>Add Player</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {/* Roster Players List */}
       <FlatList
         data={team.players}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item, index }) => (
-          <TouchableOpacity
-            style={styles.playerCard}
-            onPress={() => router.push(`/player/${item.id}`)}
-          >
-            <View style={styles.numBox}>
-              <Text style={styles.numText}>{index + 1}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.nameRow}>
-                <Text style={styles.playerName}>{item.name}</Text>
-                {item.isCaptain && <Text style={styles.tagCaptain}> (C)</Text>}
-                {item.isWicketkeeper && <Text style={styles.tagWK}> (WK)</Text>}
-                {item.isGuest && (
-                  <View style={styles.ghostTag}>
-                    <Text style={styles.ghostTagText}>UNLINKED</Text>
-                  </View>
-                )}
+        renderItem={({ item, index }) => {
+          const isPlayerCaptain =
+            item.isCaptain || item.id === team.captainPlayerId;
+
+          return (
+            <View style={styles.playerCard}>
+              <View style={styles.numBox}>
+                <Text style={styles.numText}>{index + 1}</Text>
               </View>
-              <Text style={styles.roleSub}>
-                {(item.battingHand || 'right').toUpperCase()} HAND • {(item.role || 'batter').toUpperCase()}
-                {item.bowlingStyle ? ` • ${item.bowlingStyle}` : ''}
-              </Text>
-              {item.phoneNumber ? (
-                <Text style={styles.phoneMeta}>📱 {item.phoneNumber}</Text>
-              ) : null}
+
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                onPress={() => router.push(`/player/${item.id}`)}
+              >
+                <View style={styles.nameRow}>
+                  <Text style={styles.playerName}>{item.name}</Text>
+                  {isPlayerCaptain && (
+                    <View style={styles.captainBadge}>
+                      <Text style={styles.captainBadgeText}>C</Text>
+                    </View>
+                  )}
+                  {item.isWicketkeeper && (
+                    <View style={styles.wkBadge}>
+                      <Text style={styles.wkBadgeText}>WK</Text>
+                    </View>
+                  )}
+                  {item.isMatchGuest && (
+                    <View style={styles.guestBadge}>
+                      <Text style={styles.guestBadgeText}>GUEST</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.roleSub}>
+                  {(item.battingHand || 'right').toUpperCase()} HAND •{' '}
+                  {(item.role || 'batter').toUpperCase()}
+                  {item.bowlingStyle ? ` • ${item.bowlingStyle}` : ''}
+                </Text>
+
+                {/* Privacy Rule: Never show phone numbers publicly; show masked only to manager */}
+                {isManagerOrOwner && item.phoneNumber ? (
+                  <Text style={styles.phoneMetaPrivate}>
+                    🔒 Contact: {item.phoneNumber.slice(0, 4)}••••{item.phoneNumber.slice(-2)}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+
+              {/* Manager / Captain Actions */}
+              {(isManagerOrOwner || isCaptain) && (
+                <View style={styles.playerActionsCol}>
+                  {!isPlayerCaptain && (
+                    <TouchableOpacity
+                      style={styles.captainActionBtn}
+                      onPress={() => handleSetCaptain(item)}
+                    >
+                      <Text style={styles.captainActionText}>Make C</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.removeActionBtn}
+                    onPress={() => handleRemovePlayer(item)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
-          </TouchableOpacity>
-        )}
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptySquadBox}>
+            <MaterialCommunityIcons name="account-group-outline" size={44} color="#64748B" />
+            <Text style={styles.emptySquadTitle}>No Members on Roster</Text>
+            <Text style={styles.emptySquadSub}>
+              Use "Add Player" above to build this team's roster.
+            </Text>
+          </View>
+        }
       />
 
-      {/* Add Player (Unlinked / Not joined yet) Modal */}
-      <Modal
-        visible={isGhostModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsGhostModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
+      {/* Add Player Profile Modal (Flow A3) */}
+      <Modal visible={isAddMemberModalVisible} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Add Player (Unlinked / Not joined yet)</Text>
-                <Text style={styles.modalSub}>
-                  Add teammate without an existing app account. Career stats automatically claim when they sign in with their phone number!
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setIsGhostModalVisible(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={20} color="#64748B" />
+              <Text style={styles.modalTitle}>Add Player to Team Sheet</Text>
+              <TouchableOpacity onPress={() => setIsAddMemberModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Player Full Name *</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="e.g. Jasprit Bumrah"
-              placeholderTextColor="#94A3B8"
-              value={ghostName}
-              onChangeText={setGhostName}
-            />
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              {/* Name */}
+              <Text style={styles.inputLabel}>Player Full Name *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={playerName}
+                onChangeText={setPlayerName}
+                placeholder="e.g. Suryakumar Yadav"
+                placeholderTextColor="#64748B"
+              />
 
-            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Mobile Phone Number *</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="e.g. +91 98765 43210"
-              placeholderTextColor="#94A3B8"
-              keyboardType="phone-pad"
-              value={ghostPhone}
-              onChangeText={setGhostPhone}
-            />
+              {/* Playing Role */}
+              <Text style={styles.inputLabel}>Playing Role</Text>
+              <View style={styles.chipsRow}>
+                {ROLES.map((r) => (
+                  <TouchableOpacity
+                    key={r.key}
+                    style={[
+                      styles.chipBtn,
+                      playerRole === r.key && styles.chipBtnActive,
+                    ]}
+                    onPress={() => setPlayerRole(r.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.chipBtnText,
+                        playerRole === r.key && styles.chipBtnTextActive,
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Playing Role</Text>
-            <View style={styles.roleChipsRow}>
-              {(['batter', 'bowler', 'all-rounder', 'wicketkeeper'] as PlayingRole[]).map((r) => (
+              {/* Batting Hand */}
+              <Text style={styles.inputLabel}>Batting Hand</Text>
+              <View style={styles.chipsRow}>
                 <TouchableOpacity
-                  key={r}
                   style={[
-                    styles.roleChip,
-                    ghostRole === r && styles.roleChipSelected,
+                    styles.chipBtn,
+                    battingHand === 'right' && styles.chipBtnActive,
                   ]}
-                  onPress={() => {
-                    CricketHaptics.toggle();
-                    setGhostRole(r);
-                  }}
+                  onPress={() => setBattingHand('right')}
                 >
                   <Text
                     style={[
-                      styles.roleChipText,
-                      ghostRole === r && styles.roleChipTextSelected,
+                      styles.chipBtnText,
+                      battingHand === 'right' && styles.chipBtnTextActive,
                     ]}
                   >
-                    {r.toUpperCase()}
+                    Right-Handed
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
 
-            <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.chipBtn,
+                    battingHand === 'left' && styles.chipBtnActive,
+                  ]}
+                  onPress={() => setBattingHand('left')}
+                >
+                  <Text
+                    style={[
+                      styles.chipBtnText,
+                      battingHand === 'left' && styles.chipBtnTextActive,
+                    ]}
+                  >
+                    Left-Handed
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Bowling Style (If not pure batter) */}
+              {playerRole !== 'batter' && (
+                <>
+                  <Text style={styles.inputLabel}>Bowling Style</Text>
+                  <View style={styles.chipsRow}>
+                    {BOWLING_STYLES.map((bs) => (
+                      <TouchableOpacity
+                        key={bs.key}
+                        style={[
+                          styles.chipBtn,
+                          bowlingStyle === bs.key && styles.chipBtnActive,
+                        ]}
+                        onPress={() => setBowlingStyle(bs.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.chipBtnText,
+                            bowlingStyle === bs.key && styles.chipBtnTextActive,
+                          ]}
+                        >
+                          {bs.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Optional Contact Phone */}
+              <Text style={styles.inputLabel}>
+                Contact Phone (Optional Private Contact)
+              </Text>
+              <TextInput
+                style={styles.formInput}
+                value={playerPhone}
+                onChangeText={setPlayerPhone}
+                placeholder="e.g. +91 98765 43210"
+                placeholderTextColor="#64748B"
+                keyboardType="phone-pad"
+              />
+              <Text style={styles.phoneDisclaimer}>
+                🔒 Private contact data only. Stored securely and never exposed in public team listings.
+              </Text>
+
+              {/* Member Scope Toggle: Permanent vs Match-Only Guest */}
+              <View style={styles.scopeBox}>
+                <TouchableOpacity
+                  style={styles.scopeRow}
+                  onPress={() => setIsMatchGuestOnly(!isMatchGuestOnly)}
+                >
+                  <View
+                    style={[
+                      styles.scopeRadio,
+                      isMatchGuestOnly && styles.scopeRadioActive,
+                    ]}
+                  >
+                    {isMatchGuestOnly && <View style={styles.scopeRadioDot} />}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.scopeTitle}>Match-only Guest / Substitute</Text>
+                    <Text style={styles.scopeDesc}>
+                      {isMatchGuestOnly
+                        ? 'Added as a temporary match guest only. Will NOT alter the permanent team roster.'
+                        : 'Added as a permanent roster member of this team.'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Submit Button */}
               <TouchableOpacity
-                style={styles.cancelModalBtn}
-                onPress={() => setIsGhostModalVisible(false)}
+                style={[
+                  styles.submitMemberBtn,
+                  isSubmittingMember && { opacity: 0.6 },
+                ]}
+                onPress={handleAddMemberSubmit}
+                disabled={isSubmittingMember}
               >
-                <Text style={styles.cancelModalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveModalBtn, isAddingGhost && { opacity: 0.6 }]}
-                disabled={isAddingGhost}
-                onPress={handleAddGhostPlayer}
-              >
-                <Text style={styles.saveModalBtnText}>
-                  {isAddingGhost ? 'Adding...' : 'Add Player'}
+                <Text style={styles.submitMemberBtnText}>
+                  {isSubmittingMember ? 'ADDING PLAYER...' : 'ADD PLAYER TO ROSTER'}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -293,25 +588,25 @@ export default function TeamDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#070D1E',
   },
   centerContainer: {
     flex: 1,
+    backgroundColor: '#070D1E',
     alignItems: 'center',
     justifyContent: 'center',
   },
   notFoundText: {
-    color: '#64748B',
-    fontSize: 14,
+    color: '#94A3B8',
+    fontSize: 16,
+    fontWeight: '700',
   },
   headerBanner: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0C142B',
     padding: 16,
-    borderLeftWidth: 6,
-    margin: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderLeftWidth: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2C4F',
   },
   headerRow: {
     flexDirection: 'row',
@@ -320,299 +615,391 @@ const styles = StyleSheet.create({
   },
   teamTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
   teamSub: {
-    fontSize: 13,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#94A3B8',
     marginTop: 4,
   },
-  roleTag: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+  headerCaptainText: {
+    fontSize: 12,
+    color: '#00E676',
+    fontWeight: '700',
+    marginTop: 4,
   },
-  roleTagText: {
-    color: '#B45309',
-    fontWeight: '800',
+  roleTagManager: {
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#00E5FF',
+  },
+  roleTagManagerText: {
+    color: '#00E5FF',
     fontSize: 11,
+    fontWeight: '800',
   },
-  joinBtn: {
-    backgroundColor: Colors.pitchGreen,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  roleTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
   },
+  roleTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  joinBtn: {
+    backgroundColor: '#00E676',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
   joinBtnPending: {
-    backgroundColor: '#94A3B8',
+    backgroundColor: '#1E2C4F',
   },
   joinBtnText: {
-    color: '#FFF',
+    color: '#070D1E',
+    fontWeight: '900',
     fontSize: 12,
-    fontWeight: '700',
   },
   inboxCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: '#FFFBEB',
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: '#121C38',
+    margin: 16,
+    marginBottom: 0,
+    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#1E2C4F',
   },
   inboxTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#92400E',
-    marginBottom: 8,
+    color: '#FFB300',
+    marginBottom: 10,
   },
   reqRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 6,
-    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2C4F',
   },
   reqName: {
-    fontSize: 13,
+    color: '#FFFFFF',
     fontWeight: '700',
-    color: '#0F172A',
+    fontSize: 13,
   },
   reqSub: {
+    color: '#94A3B8',
     fontSize: 11,
-    color: '#64748B',
   },
   approveBtn: {
-    backgroundColor: Colors.pitchGreen,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: '#00E676',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginRight: 6,
   },
   approveText: {
-    color: '#FFF',
+    color: '#070D1E',
+    fontWeight: '800',
     fontSize: 11,
-    fontWeight: '700',
   },
   declineBtn: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
   },
   declineText: {
-    color: '#DC2626',
+    color: '#FFFFFF',
+    fontWeight: '800',
     fontSize: 11,
-    fontWeight: '700',
-  },
-  squadHeading: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#475569',
-    textTransform: 'uppercase',
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  list: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-  playerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-  },
-  numBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  numText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  playerName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  tagCaptain: {
-    color: Colors.accentAmber,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  tagWK: {
-    color: Colors.pitchGreen,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  roleSub: {
-    fontSize: 11,
-    color: '#64748B',
   },
   squadHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginBottom: 8,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  addGhostBtn: {
+  squadHeading: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  squadSubText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  addMemberBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    gap: 4,
+    backgroundColor: '#00E676',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 6,
   },
-  addGhostBtnText: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: '700',
+  addMemberBtnText: {
+    color: '#070D1E',
+    fontWeight: '800',
+    fontSize: 12,
   },
-  ghostTag: {
-    backgroundColor: '#F3E8FF',
+  list: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  playerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0C142B',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  numBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#121C38',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  numText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  playerName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  captainBadge: {
+    backgroundColor: '#00E676',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  captainBadgeText: {
+    color: '#070D1E',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  wkBadge: {
+    backgroundColor: '#00E5FF',
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
-    marginLeft: 6,
-    borderWidth: 1,
-    borderColor: '#E9D5FF',
   },
-  ghostTagText: {
-    color: '#7E22CE',
-    fontSize: 9,
+  wkBadgeText: {
+    color: '#070D1E',
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 0.5,
   },
-  phoneMeta: {
+  guestBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  guestBadgeText: {
+    color: '#070D1E',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  roleSub: {
     fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-    fontWeight: '500',
+    color: '#94A3B8',
+    marginTop: 3,
   },
-  modalOverlay: {
+  phoneMetaPrivate: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 3,
+  },
+  playerActionsCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 8,
+  },
+  captainActionBtn: {
+    backgroundColor: '#121C38',
+    borderWidth: 1,
+    borderColor: '#00E676',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  captainActionText: {
+    color: '#00E676',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  removeActionBtn: {
+    padding: 6,
+  },
+  emptySquadBox: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptySquadTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  emptySquadSub: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(7, 13, 30, 0.85)',
+    justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: '#0C142B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    borderTopWidth: 1.5,
+    borderTopColor: '#1E2C4F',
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  modalSub: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  modalCloseBtn: {
-    padding: 4,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-    marginBottom: 6,
-  },
-  textInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-    color: '#0F172A',
-    fontWeight: '600',
-  },
-  roleChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  roleChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  roleChipSelected: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
-  },
-  roleChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  roleChipTextSelected: {
+    fontSize: 17,
+    fontWeight: '900',
     color: '#FFFFFF',
   },
-  modalBtnRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 20,
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
-  cancelModalBtn: {
+  formInput: {
+    backgroundColor: '#121C38',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    paddingVertical: 12,
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 14,
   },
-  cancelModalBtnText: {
-    color: '#475569',
-    fontSize: 13,
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  chipBtn: {
+    backgroundColor: '#121C38',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  chipBtnActive: {
+    backgroundColor: '#00E676',
+    borderColor: '#00E676',
+  },
+  chipBtnText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#94A3B8',
   },
-  saveModalBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 8,
+  chipBtnTextActive: {
+    color: '#070D1E',
+    fontWeight: '800',
+  },
+  phoneDisclaimer: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: -8,
+    marginBottom: 14,
+  },
+  scopeBox: {
+    backgroundColor: '#121C38',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  scopeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scopeRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeRadioActive: {
+    borderColor: '#00E676',
+  },
+  scopeRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#00E676',
   },
-  saveModalBtnText: {
-    color: '#0F172A',
+  scopeTitle: {
     fontSize: 13,
     fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  scopeDesc: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  submitMemberBtn: {
+    backgroundColor: '#00E676',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  submitMemberBtnText: {
+    color: '#070D1E',
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 });

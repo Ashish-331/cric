@@ -97,8 +97,10 @@ export interface Player {
   bowlingStyle?: BowlingStyle;
   teamId?: string;
   phoneNumber?: string;
+  email?: string;
   isVerified?: boolean;
   isGuest?: boolean;
+  isMatchGuest?: boolean;
   isClaimed?: boolean;
   claimedByUserId?: string;
   isCaptain?: boolean;
@@ -119,9 +121,15 @@ export interface Team {
   name: string;
   shortName: string;
   primaryColor: string;
+  city?: string;
   logoUrl?: string;
   captainPlayerId?: string;
+  captainName?: string;
+  captainPhone?: string;
   createdByUserId?: string;
+  managerUserId?: string;
+  isOpponent?: boolean;
+  inviteCode?: string;
   players: Player[];
 }
 
@@ -378,6 +386,7 @@ export interface TournamentEntry {
   changesRequestedReason?: string;
   submittedAt: number;
   reviewedAt?: number;
+  reviewedByUserId?: string;
   squad: TournamentSquadMember[];
 }
 

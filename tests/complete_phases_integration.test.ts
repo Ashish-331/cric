@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AuthService } from '../src/services/authService';
+import { AuthService, DEV_TEST_ACCOUNTS } from '../src/services/authService';
 import { CanonicalMatchService } from '../src/services/canonicalMatchService';
 import { CanonicalTournamentService } from '../src/services/canonicalTournamentService';
 import { CricketEngine, createInitialInnings, validateDeliveryInput } from '../src/engine/cricketEngine';
@@ -218,3 +218,32 @@ test('PHASE5: Configurable short-sided teams (7-a-side) respect custom all-out r
   assert.equal(result.innings.totalWickets, 6);
   assert.equal(result.isInningsComplete, true, '7-a-side match must complete at 6 wickets (7 - 1)');
 });
+
+test('PHASE6: Email-First Authentication, zero SMS dependency, and password sign-in architecture', async () => {
+  // 1. Email format normalization and validation
+  assert.equal(AuthService.normalizeEmail(' Captain.Rohit@Cric.TEST '), 'captain.rohit@cric.test');
+  assert.equal(AuthService.normalizeEmail('scorer@cric.test'), 'scorer@cric.test');
+  assert.throws(() => AuthService.normalizeEmail('invalid-email-string'), /Invalid email address/);
+
+  // 2. Dev test accounts exist with email/password credentials
+  const devAccounts = Object.values(DEV_TEST_ACCOUNTS);
+  assert.equal(devAccounts.length, 4);
+  const roles = devAccounts.map((a: any) => a.role);
+  assert(roles.includes('Tournament Organizer'));
+  assert(roles.includes('Team Captain'));
+  assert(roles.includes('Assigned Match Scorer'));
+  assert(roles.includes('Individual Cricket Player'));
+
+  // 3. Password reset request succeeds with normalized email
+  const resetRes = await AuthService.sendPasswordResetEmail('player@cric.test');
+  assert.equal(resetRes.success, true);
+  assert(resetRes.message.includes('player@cric.test'));
+
+  // 4. Account profile without phone number is valid (phone is optional contact info only)
+  const dummyUser: any = { id: generateUUID(), email: 'player@cric.test' };
+  const profile = await AuthService.ensureAccountProfile(dummyUser, 'player@cric.test', 'Player One');
+  assert.equal(profile.id, dummyUser.id);
+  assert.equal(profile.email, 'player@cric.test');
+  assert.equal(profile.displayName, 'Player One');
+});
+

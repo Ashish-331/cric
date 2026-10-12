@@ -37,6 +37,33 @@ test('AUTH-SVC-002: Dev test accounts exist for all core primary roles', () => {
   assert.equal(uniqueNumbers.size, numbers.length, 'Each dev role must have a distinct test phone number');
 });
 
+test('AUTH-SVC-003: Email normalization and validation rejects malformed formats', () => {
+  // 1. Lowercase and trim
+  assert.equal(AuthService.normalizeEmail(' Player@Example.COM  '), 'player@example.com');
+  assert.equal(AuthService.normalizeEmail('captain.rohit@cric.test'), 'captain.rohit@cric.test');
+
+  // 2. Reject malformed emails
+  assert.throws(() => AuthService.normalizeEmail('notanemail'), /Invalid email address format/);
+  assert.throws(() => AuthService.normalizeEmail('user@domain'), /Invalid email address format/);
+  assert.throws(() => AuthService.normalizeEmail('@missingusername.com'), /Invalid email address format/);
+  assert.equal(AuthService.normalizeEmail(''), '');
+  assert.equal(AuthService.normalizeEmail(undefined), '');
+});
+
+test('AUTH-SVC-004: Email-first DEV test accounts provide complete credentials with zero SMS overhead', () => {
+  const accounts = Object.values(DEV_TEST_ACCOUNTS);
+  const emails = accounts.map((a) => a.email);
+  const uniqueEmails = new Set(emails);
+
+  assert.equal(uniqueEmails.size, accounts.length, 'Each dev role must have a distinct test email address');
+  for (const acc of accounts) {
+    assert(acc.email.endsWith('@cric.test'), `Dev email ${acc.email} must use the test domain`);
+    assert(acc.password.length >= 6, `Dev password for ${acc.email} must satisfy minimum 6 character policy`);
+    assert(acc.displayName.length > 0, `Dev account ${acc.email} must specify a displayName`);
+    assert.doesNotThrow(() => AuthService.normalizeEmail(acc.email));
+  }
+});
+
 test('REPO-001: Match repository contracts, filtering, and outbox lifecycle', async () => {
   const repo = new SQLiteMatchRepository();
   const sample = createSampleMatch();

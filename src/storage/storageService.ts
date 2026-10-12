@@ -54,6 +54,7 @@ const TOURNAMENT_ENTRIES_STORAGE_KEY = '@cric_tournament_entries_v1';
 
 export interface UserProfile {
   id: string;
+  email?: string;
   phoneNumber?: string;
   name: string;
   isGuest: boolean;

@@ -36,6 +36,7 @@ import { CanonicalMatchService } from '../services/canonicalMatchService';
 import { CanonicalTournamentService } from '../services/canonicalTournamentService';
 import { getDatabase } from '../repositories/sqlite/database';
 import { generateUUID } from '../utils/uuid';
+import { AuthService } from '../services/authService';
 
 interface CreateMatchParams {
   title: string;
@@ -246,7 +247,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         }
 
-        const [loadedTeams, profile, requests, loadedTournaments, loadedEntries] = await Promise.all([
+        const [loadedTeams, localProfile, requests, loadedTournaments, loadedEntries] = await Promise.all([
           StorageService.getTeams(),
           StorageService.getUserProfile(),
           StorageService.getJoinRequests(),
@@ -254,12 +255,33 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           StorageService.getTournamentEntries(),
         ]);
 
+        // Resolve active Supabase session if present
+        let resolvedProfile = localProfile;
+        try {
+          const session = await AuthService.getSession();
+          if (session?.user) {
+            const user = session.user;
+            resolvedProfile = {
+              ...localProfile,
+              id: user.id,
+              email: user.email || localProfile.email,
+              name: user.user_metadata?.display_name || localProfile.name || user.email?.split('@')[0] || 'Authenticated Player',
+              phoneNumber: user.user_metadata?.phone_number || localProfile.phoneNumber,
+              isGuest: false,
+              isVerified: true,
+            };
+            await StorageService.saveUserProfile(resolvedProfile);
+          }
+        } catch (authErr) {
+          console.warn('Startup session check warning:', authErr);
+        }
+
         // Rollup stats initially from completed matches
         const rolledTeams = await applyCareerStatsRollup(initialMatches, loadedTeams);
 
         setMatches(initialMatches);
         setTeams(rolledTeams);
-        setUserProfile(profile);
+        setUserProfile(resolvedProfile);
         setJoinRequests(requests);
         setTournaments(loadedTournaments);
         setTournamentEntries(loadedEntries);
@@ -270,6 +292,46 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     };
     initializeData();
+
+    // Listen to real-time Supabase auth state changes
+    const { data: authListener } = AuthService.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const user = session.user;
+        setUserProfile((prev) => {
+          const updated: UserProfile = {
+            ...(prev || {
+              id: user.id,
+              name: 'Authenticated Player',
+              isGuest: false,
+              isVerified: true,
+              role: 'player',
+            }),
+            id: user.id,
+            email: user.email || prev?.email,
+            name: user.user_metadata?.display_name || prev?.name || user.email?.split('@')[0] || 'Authenticated Player',
+            phoneNumber: user.user_metadata?.phone_number || prev?.phoneNumber,
+            isGuest: false,
+            isVerified: true,
+          };
+          StorageService.saveUserProfile(updated).catch(() => {});
+          return updated;
+        });
+      } else if (event === 'SIGNED_OUT') {
+        const guestUser: UserProfile = {
+          id: `guest_${Date.now()}`,
+          name: 'Guest Scorer',
+          isGuest: true,
+          isVerified: false,
+          role: 'scorer',
+        };
+        setUserProfile(guestUser);
+        StorageService.saveUserProfile(guestUser).catch(() => {});
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, [applyCareerStatsRollup]);
 
   const refreshMatches = useCallback(async () => {

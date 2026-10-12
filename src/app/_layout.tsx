@@ -57,7 +57,7 @@ export default function RootLayout() {
         <Stack.Screen
           name="auth/login"
           options={{
-            title: 'Mobile Sign In',
+            title: 'Sign In & Account',
             headerBackTitle: 'Back',
             presentation: 'modal',
           }}

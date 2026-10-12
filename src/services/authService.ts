@@ -436,4 +436,10 @@ export class AuthService {
     const { data } = await supabase.auth.getUser();
     return data.user;
   }
+
+  static onAuthStateChange(
+    callback: (event: string, session: Session | null) => void
+  ) {
+    return supabase.auth.onAuthStateChange(callback);
+  }
 }

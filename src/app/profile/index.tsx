@@ -15,6 +15,7 @@ import { useCricket } from '../../context/CricketContext';
 import { AvatarPreset, PlayingRole, BattingHand, BowlingStyle } from '../../types/cricket';
 import { Colors } from '../../utils/colors';
 import { CricketHaptics } from '../../services/haptics';
+import { AuthService } from '../../services/authService';
 
 export const AVATAR_PRESETS: { id: AvatarPreset; label: string; icon: string; color: string }[] = [
   { id: 'helmet', label: 'Helmet', icon: 'shield-account', color: '#00E5FF' },
@@ -82,24 +83,31 @@ export default function ProfileScreen() {
   const handleLogOut = () => {
     CricketHaptics.toggle();
     Alert.alert(
-      'Sign Out Session',
-      'Are you sure you want to log out? You will return to Guest Scorer mode.',
+      'Sign Out Account',
+      'Are you sure you want to sign out of your account?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Log Out',
+          text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            try {
+              await AuthService.signOut();
+            } catch (err: any) {
+              console.warn('Sign out warning:', err.message);
+            }
             await updateUserProfile({
+              id: `guest_${Date.now()}`,
               name: 'Guest Scorer',
+              email: undefined,
               isGuest: true,
               isVerified: false,
               phoneNumber: undefined,
               claimedPlayerId: undefined,
-              role: 'player',
+              role: 'scorer',
             });
-            Alert.alert('Signed Out', 'You are now in Guest Scorer mode.');
-            router.replace('/(tabs)');
+            Alert.alert('Signed Out', 'You have been signed out of your account.');
+            router.replace('/auth/login');
           },
         },
       ]

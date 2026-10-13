@@ -1,53 +1,57 @@
-export const Colors = {
-  // Stadium Night Broadcast Theme
-  primary: '#070D1E', // Deep Midnight Navy
-  primaryDark: '#040711', // Stadium Void Black
-  pitchGreen: '#00E676', // Pitch Turf Emerald Glowing
-  turfGreenDark: '#00A854', // Dark Turf Accent
-  accentAmber: '#FFB300', // Energy Amber Leather
-  accentRed: '#FF1744', // Electric Crimson Wicket
-  accentCyan: '#00E5FF', // Neon Cyan Spotlight
-  accentPurple: '#D500F9', // Electric Six Purple
+import { LightColors, DarkColors } from '../theme/tokens';
 
-  // Backgrounds & Surfaces
-  background: '#F4F6F9', // Clean Daytime Light Canvas
-  stadiumDark: '#070D1E', // Broadcast Night Stadium Background
+export const Colors = {
+  // Brand & Field Green (calm British/Australian cricket green)
+  primary: '#286B4D',
+  primaryDark: '#17201B',
+  pitchGreen: '#286B4D',
+  turfGreenDark: '#1F543C',
+  accentAmber: '#825500',
+  accentRed: '#BA1A1A',
+  accentCyan: '#00639B',
+  accentPurple: '#5E418C',
+
+  // Backgrounds & Surfaces (Quiet paper and natural surfaces)
+  background: '#F6F7F4',
+  stadiumDark: '#101713',
   cardBackground: '#FFFFFF',
-  cardHeader: '#FAFAFB',
-  darkCard: '#0C142B', // Premium Broadcast Glass Card
-  darkCardSurface: '#121C38', // Inner Elevation Card
-  glassBorder: '#1E2C4F', // Glowing Border
+  cardHeader: '#F6F7F4',
+  darkCard: '#18211B',
+  darkCardSurface: '#222D26',
+  glassBorder: '#303A34',
 
   // Typography
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  textLight: '#F8FAFC',
+  textPrimary: '#17201B',
+  textSecondary: '#536057',
+  textMuted: '#66716A',
+  textLight: '#FFFFFF',
   textBroadcast: '#FFFFFF',
-  textNeonGreen: '#00E676',
-  textNeonAmber: '#FFB300',
+  textNeonGreen: '#286B4D',
+  textNeonAmber: '#825500',
 
   // Borders & Accents
-  border: '#E2E8F0',
-  borderLight: '#EDF2F7',
-  divider: '#CBD5E1',
+  border: '#D9E1DB',
+  borderLight: '#E7ECE8',
+  divider: '#D9E1DB',
 
-  // Delivery Badges & Scoring Colors
-  dotBall: '#64748B',
-  singleRun: '#3B82F6',
-  twoRun: '#0284C7',
-  threeRun: '#0369A1',
-  fourBoundary: '#00E676', // Emerald
-  sixMaximum: '#D500F9', // Electric Violet/Gold
-  wicketBadge: '#FF1744', // Electric Crimson
-  extraBadge: '#FFB300', // Amber
-  freeHitBadge: '#FF9100', // Warning Glow Orange
+  // Delivery Badges & Scoring Colors (Scorebook clarity)
+  dotBall: '#536057',
+  singleRun: '#00639B',
+  twoRun: '#00639B',
+  threeRun: '#00639B',
+  fourBoundary: '#286B4D',
+  sixMaximum: '#5E418C',
+  wicketBadge: '#BA1A1A',
+  extraBadge: '#825500',
+  freeHitBadge: '#825500',
 
   // Status Colors
-  statusLive: '#FF1744',
-  statusBreak: '#FFB300',
-  statusCompleted: '#00E676',
-  statusSynced: '#00E5FF',
-  statusLocal: '#6B7280',
-  statusDelayed: '#F59E0B',
+  statusLive: '#BA1A1A',
+  statusBreak: '#825500',
+  statusCompleted: '#286B4D',
+  statusSynced: '#00639B',
+  statusLocal: '#66716A',
+  statusDelayed: '#825500',
 };
+
+export { LightColors, DarkColors };

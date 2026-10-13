@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { PlayerPerformanceService } from '../../services/playerPerformanceService';
+import { useTheme } from '../../theme';
 
 interface SearchResult {
   id: string;
@@ -22,6 +23,7 @@ interface SearchResult {
 
 export default function SearchScreen() {
   const { matches, teams, tournaments, userProfile } = useCricket();
+  const { colors, isDark } = useTheme();
   const [query, setQuery] = useState('');
 
   const searchResults: SearchResult[] = React.useMemo(() => {
@@ -92,25 +94,41 @@ export default function SearchScreen() {
   }, [query, matches, teams, tournaments]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.canvas }]}>
       {/* Search Bar Header */}
-      <View style={styles.searchHeader}>
+      <View
+        style={[
+          styles.searchHeader,
+          {
+            backgroundColor: colors.canvas,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#94A3B8" />
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons name="search" size={18} color={colors.textSecondary} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
             placeholder="Search matches, teams, tournaments..."
-            placeholderTextColor="#64748B"
+            placeholderTextColor={colors.textTertiary}
             value={query}
             onChangeText={setQuery}
             autoFocus
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -122,11 +140,22 @@ export default function SearchScreen() {
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.resultCard}
+            style={[
+              styles.resultCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
             onPress={() => router.push(item.route as any)}
             activeOpacity={0.8}
           >
-            <View style={styles.iconCircle}>
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: colors.primarySubtle },
+              ]}
+            >
               <Ionicons
                 name={
                   item.type === 'match'
@@ -136,27 +165,29 @@ export default function SearchScreen() {
                     : 'trophy'
                 }
                 size={18}
-                color="#00E676"
+                color={colors.brand}
               />
             </View>
             <View style={styles.resultInfo}>
-              <Text style={styles.resultTitle}>{item.title}</Text>
-              <Text style={styles.resultSub}>{item.subtitle}</Text>
+              <Text style={[styles.resultTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+              <Text style={[styles.resultSub, { color: colors.textSecondary }]}>{item.subtitle}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748B" />
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
         ListEmptyComponent={
           query.trim().length > 0 ? (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>No matching entities found for "{query}".</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No matching entities found for "{query}".
+              </Text>
             </View>
           ) : (
             <View style={styles.emptyBox}>
-              <Ionicons name="search-outline" size={48} color="#475569" />
-              <Text style={styles.emptyTitle}>Operational Search</Text>
-              <Text style={styles.emptySub}>
-                Search by match venue, team name, tournament series, or club name.
+              <Ionicons name="search-outline" size={44} color={colors.textTertiary} />
+              <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Scorebook Search</Text>
+              <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+                Search by match venue, team name, or tournament series.
               </Text>
             </View>
           )
@@ -169,7 +200,6 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#070D1E',
   },
   searchHeader: {
     flexDirection: 'row',
@@ -177,29 +207,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: {
     padding: 6,
     marginRight: 6,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0C142B',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1E2C4F',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#FFFFFF',
     marginHorizontal: 8,
   },
   listContent: {
@@ -208,18 +235,15 @@ const styles = StyleSheet.create({
   resultCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0C142B',
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#1E2C4F',
   },
   iconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E2C4F',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -229,32 +253,29 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#FFF',
+    fontWeight: '700',
   },
   resultSub: {
-    fontSize: 11,
-    color: '#94A3B8',
+    fontSize: 12,
     marginTop: 2,
   },
   emptyBox: {
-    padding: 32,
+    padding: 40,
     alignItems: 'center',
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#FFF',
+    fontWeight: '700',
     marginTop: 12,
   },
   emptySub: {
-    fontSize: 12,
-    color: '#94A3B8',
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    lineHeight: 18,
   },
   emptyText: {
     fontSize: 13,
-    color: '#94A3B8',
+    textAlign: 'center',
   },
 });

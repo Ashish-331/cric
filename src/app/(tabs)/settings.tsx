@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,15 @@ import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { UserProfile } from '../../storage/storageService';
-import { Colors } from '../../utils/colors';
+import { useTheme, ThemeMode } from '../../theme/useTheme';
+import { ThemeColors } from '../../theme/tokens';
+import { CricketHaptics } from '../../services/haptics';
 import { AuthService } from '../../services/authService';
 
 export default function SettingsScreen() {
+  const { theme, themeMode, setThemeMode } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const {
     userProfile,
     updateUserProfile,
@@ -83,7 +88,7 @@ export default function SettingsScreen() {
       {/* 1. Unified Account & Security Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+          <Ionicons name="shield-checkmark" size={22} color={theme.primary} />
           <Text style={styles.cardTitle}>Account & Security</Text>
         </View>
 
@@ -103,7 +108,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.nameRow}>
                   <Text style={styles.profileName}>{userProfile?.name}</Text>
-                  <Ionicons name="checkmark-circle" size={18} color={Colors.pitchGreen} style={{ marginLeft: 4 }} />
+                  <Ionicons name="checkmark-circle" size={18} color={theme.primary} style={{ marginLeft: 4 }} />
                 </View>
                 <Text style={styles.profileRole}>
                   Account: <Text style={styles.roleHighlight}>{userProfile.email || 'Verified'}</Text>
@@ -123,23 +128,23 @@ export default function SettingsScreen() {
                 style={[styles.viewProfileBtn, { flex: 1, marginTop: 0 }]}
                 onPress={() => router.push('/profile')}
               >
-                <Ionicons name="person" size={15} color="#FFF" />
+                <Ionicons name="person" size={15} color={theme.text} />
                 <Text style={styles.viewProfileBtnText}>My Cricket Hub</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.viewProfileBtn, { flex: 1, marginTop: 0, backgroundColor: '#EF4444' }]}
+                style={[styles.signOutBtn, { flex: 1, marginTop: 0 }]}
                 onPress={handleSignOut}
               >
-                <Ionicons name="log-out-outline" size={15} color="#FFF" />
-                <Text style={styles.viewProfileBtnText}>Sign Out</Text>
+                <Ionicons name="log-out-outline" size={15} color={theme.danger} />
+                <Text style={styles.signOutBtnText}>Sign Out</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <View style={styles.guestWarningBox}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <Ionicons name="alert-circle" size={22} color={Colors.accentAmber} />
+              <Ionicons name="alert-circle" size={22} color={theme.warning} />
               <Text style={styles.guestTitle}>Guest Mode (Local Offline Only)</Text>
             </View>
             <Text style={styles.guestDesc}>
@@ -149,17 +154,64 @@ export default function SettingsScreen() {
               style={styles.signInActionBtn}
               onPress={() => router.push('/auth/login')}
             >
-              <Ionicons name="log-in-outline" size={18} color="#FFF" />
+              <Ionicons name="log-in-outline" size={18} color={theme.surface} />
               <Text style={styles.signInActionText}>Sign In / Register Account</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
 
-      {/* 4. Offline Scoring & Storage Health */}
+      {/* 2. Appearance & Scorebook Ground Mode */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Ionicons name="cloud-offline-outline" size={22} color={Colors.accentAmber} />
+          <Ionicons name="color-palette-outline" size={22} color={theme.primary} />
+          <Text style={styles.cardTitle}>Appearance & Scorebook</Text>
+        </View>
+        <Text style={styles.cardSub}>
+          Choose how Cric looks on this device. Ground Dark appearance delivers crisp, high-contrast typography in bright direct sun or evening floodlights.
+        </Text>
+
+        <View style={styles.themeSelectorRow}>
+          {(
+            [
+              { mode: 'system', label: 'System', icon: 'phone-portrait-outline' },
+              { mode: 'light', label: 'Light Paper', icon: 'sunny-outline' },
+              { mode: 'dark', label: 'Ground Dark', icon: 'moon-outline' },
+            ] as { mode: ThemeMode; label: string; icon: any }[]
+          ).map((item) => {
+            const isSelected = themeMode === item.mode;
+            return (
+              <TouchableOpacity
+                key={item.mode}
+                style={[styles.themeOptionBtn, isSelected && styles.themeOptionBtnActive]}
+                onPress={() => {
+                  CricketHaptics.toggle();
+                  setThemeMode(item.mode);
+                }}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={18}
+                  color={isSelected ? theme.surface : theme.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.themeOptionText,
+                    isSelected && styles.themeOptionTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* 3. Offline Scoring & Storage Health */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="cloud-offline-outline" size={22} color={theme.warning} />
           <Text style={styles.cardTitle}>Offline Scoring Health</Text>
         </View>
 
@@ -175,7 +227,7 @@ export default function SettingsScreen() {
 
         <View style={styles.healthRow}>
           <Text style={styles.healthLabel}>Offline Capability:</Text>
-          <Text style={[styles.healthValue, { color: Colors.pitchGreen }]}>100% Ready (Zero Data Needed)</Text>
+          <Text style={[styles.healthValue, { color: theme.primary }]}>100% Ready (Zero Data Needed)</Text>
         </View>
 
         <Text style={styles.offlineNote}>
@@ -183,10 +235,10 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      {/* 5. Backup & Device Migration */}
+      {/* 4. Backup & Device Migration */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Ionicons name="download-outline" size={22} color={Colors.primary} />
+          <Ionicons name="download-outline" size={22} color={theme.primary} />
           <Text style={styles.cardTitle}>Backup & Device Migration</Text>
         </View>
 
@@ -198,7 +250,7 @@ export default function SettingsScreen() {
           style={styles.importTriggerBtn}
           onPress={() => setShowImportBox(!showImportBox)}
         >
-          <Ionicons name="code-download-outline" size={18} color={Colors.primary} />
+          <Ionicons name="code-download-outline" size={18} color={theme.primary} />
           <Text style={styles.importTriggerText}>
             {showImportBox ? 'Hide JSON Import' : 'Import Match From JSON'}
           </Text>
@@ -213,6 +265,7 @@ export default function SettingsScreen() {
               value={importJsonText}
               onChangeText={setImportJsonText}
               placeholder="Paste raw Match JSON backup here..."
+              placeholderTextColor={theme.textMuted}
             />
             <TouchableOpacity style={styles.importConfirmBtn} onPress={handleImportMatch}>
               <Text style={styles.importConfirmText}>Load Match Backup</Text>
@@ -221,9 +274,9 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* 6. App Info */}
+      {/* 5. App Info */}
       <View style={styles.infoCard}>
-        <Text style={styles.appTitle}>Cricket Scoring & Management App</Text>
+        <Text style={styles.appTitle}>Cric — Grassroots Cricket Scorebook</Text>
         <Text style={styles.appVersion}>Cross-Platform (iOS & Android) • v1.0.0</Text>
         <Text style={styles.appCredits}>Built with React Native & Expo Router</Text>
       </View>
@@ -231,258 +284,264 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  cardSub: {
-    fontSize: 12,
-    color: '#64748B',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  profileBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  profileRole: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  roleHighlight: {
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  profilePhone: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  viewProfileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 10,
-    marginTop: 10,
-    gap: 8,
-  },
-  viewProfileBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  switchList: {
-    gap: 8,
-  },
-  switchCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  switchCardActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
-  },
-  switchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  switchLeft: {
-    flex: 1,
-  },
-  switchName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  switchNameActive: {
-    color: '#1D4ED8',
-  },
-  switchDesc: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  switchAction: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
-    paddingHorizontal: 8,
-  },
-  activeTag: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  activeTagText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  guestWarningBox: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 8,
-    padding: 12,
-  },
-  guestTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#B45309',
-    marginLeft: 6,
-  },
-  guestDesc: {
-    fontSize: 12,
-    color: '#92400E',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  signInActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  signInActionText: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  healthRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  healthLabel: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  healthValue: {
-    fontSize: 13,
-    color: '#0F172A',
-    fontWeight: '700',
-  },
-  offlineNote: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 10,
-    fontStyle: 'italic',
-  },
-  importTriggerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  importTriggerText: {
-    color: Colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  importBox: {
-    marginTop: 8,
-  },
-  jsonInput: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    padding: 10,
-    fontSize: 12,
-    color: '#0F172A',
-    textAlignVertical: 'top',
-  },
-  importConfirmBtn: {
-    backgroundColor: Colors.primaryDark,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  importConfirmText: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  infoCard: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  appTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  appVersion: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  appCredits: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: theme.text,
+    },
+    cardSub: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    profileBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 8,
+      backgroundColor: theme.primarySubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      color: theme.primary,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    profileName: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: theme.text,
+    },
+    profileRole: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    roleHighlight: {
+      fontWeight: '700',
+      color: theme.primary,
+    },
+    profilePhone: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+    viewProfileBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      paddingVertical: 10,
+      marginTop: 10,
+      gap: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      minHeight: 40,
+    },
+    viewProfileBtnText: {
+      color: theme.text,
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    signOutBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: theme.danger,
+      gap: 8,
+      minHeight: 40,
+    },
+    signOutBtnText: {
+      color: theme.danger,
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    themeSelectorRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 6,
+    },
+    themeOptionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surfaceAlt,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      gap: 6,
+      minHeight: 44,
+    },
+    themeOptionBtnActive: {
+      backgroundColor: theme.primary,
+      borderColor: theme.primary,
+    },
+    themeOptionText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    themeOptionTextActive: {
+      color: theme.surface,
+      fontWeight: '800',
+    },
+    guestWarningBox: {
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.warning,
+      borderRadius: 8,
+      padding: 12,
+    },
+    guestTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.warning,
+      marginLeft: 6,
+    },
+    guestDesc: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    signInActionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingVertical: 10,
+      gap: 8,
+      minHeight: 44,
+    },
+    signInActionText: {
+      color: theme.surface,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    healthRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    healthLabel: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      fontWeight: '500',
+    },
+    healthValue: {
+      fontSize: 13,
+      color: theme.text,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
+    offlineNote: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 10,
+      fontStyle: 'italic',
+      lineHeight: 16,
+    },
+    importTriggerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      minHeight: 36,
+    },
+    importTriggerText: {
+      color: theme.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    importBox: {
+      marginTop: 8,
+    },
+    jsonInput: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 10,
+      fontSize: 12,
+      color: theme.text,
+      textAlignVertical: 'top',
+    },
+    importConfirmBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: 8,
+      minHeight: 44,
+    },
+    importConfirmText: {
+      color: theme.surface,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    infoCard: {
+      alignItems: 'center',
+      paddingVertical: 14,
+    },
+    appTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    appVersion: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+    appCredits: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+  });

@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Colors } from '../../utils/colors';
 import { Player, Match } from '../../types/cricket';
+import { useTheme } from '../../theme';
+import { ThemeColors } from '../../theme/tokens';
 
 type Category = 'batting' | 'bowling' | 'fielding' | 'mvp';
 type FormatFilter = 'all' | 't20' | 'odi' | 'custom';
@@ -30,6 +32,8 @@ interface RankedEntry {
 }
 
 export default function LeaderboardsScreen() {
+  const { theme, colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { teams, matches, tournaments } = useCricket();
   const [category, setCategory] = useState<Category>('batting');
   const [format, setFormat] = useState<FormatFilter>('all');
@@ -145,7 +149,7 @@ export default function LeaderboardsScreen() {
       {/* Header */}
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Leaderboards</Text>
         <View style={{ width: 40 }} />
@@ -193,7 +197,7 @@ export default function LeaderboardsScreen() {
 
       {/* Transparent Formula / Sample Disclosure Banner */}
       <View style={styles.disclosureBanner}>
-        <Ionicons name="shield-checkmark-outline" size={14} color="#00E676" />
+        <Ionicons name="shield-checkmark-outline" size={15} color={theme.brand} />
         <Text style={styles.disclosureText}>
           {category === 'batting'
             ? 'Batting ranking sorted by gross runs. Tie-break: strike rate. Minimum 1 innings.'
@@ -213,7 +217,7 @@ export default function LeaderboardsScreen() {
         renderItem={({ item }) => {
           const isTop3 = item.rank <= 3;
           const medalColor =
-            item.rank === 1 ? '#FFD700' : item.rank === 2 ? '#C0C0C0' : item.rank === 3 ? '#CD7F32' : '#64748B';
+            item.rank === 1 ? '#D97706' : item.rank === 2 ? '#64748B' : item.rank === 3 ? '#92400E' : theme.border;
 
           return (
             <TouchableOpacity
@@ -223,7 +227,7 @@ export default function LeaderboardsScreen() {
             >
               {/* Rank Badge */}
               <View style={[styles.rankBadge, { borderColor: medalColor }]}>
-                <Text style={[styles.rankNumber, { color: isTop3 ? medalColor : '#94A3B8' }]}>
+                <Text style={[styles.rankNumber, { color: isTop3 ? medalColor : theme.textSecondary }]}>
                   #{item.rank}
                 </Text>
               </View>
@@ -252,7 +256,7 @@ export default function LeaderboardsScreen() {
         }}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
-            <Ionicons name="podium-outline" size={48} color="#475569" />
+            <Ionicons name="podium-outline" size={48} color={theme.textTertiary} />
             <Text style={styles.emptyTitle}>No Ranked Players</Text>
             <Text style={styles.emptySubtitle}>
               Play matches and record deliveries to build canonical player leaderboards.
@@ -264,186 +268,192 @@ export default function LeaderboardsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  scopeRow: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  scopeBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-  },
-  activeScopeBtn: {
-    backgroundColor: '#1E2C4F',
-  },
-  scopeBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94A3B8',
-  },
-  activeScopeBtnText: {
-    color: '#00E676',
-  },
-  categoryBar: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  categoryTab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  activeCategoryTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#00E676',
-  },
-  categoryTabText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94A3B8',
-  },
-  activeCategoryTabText: {
-    color: '#00E676',
-  },
-  disclosureBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0C142B',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  disclosureText: {
-    fontSize: 10,
-    color: '#94A3B8',
-    marginLeft: 8,
-    flex: 1,
-    lineHeight: 14,
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  rankCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  rankBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    backgroundColor: '#070D1E',
-  },
-  rankNumber: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  playerInfoBox: {
-    flex: 1,
-  },
-  playerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  playerName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  unqualifiedBadge: {
-    backgroundColor: '#1E2C4F',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 3,
-    marginLeft: 6,
-  },
-  unqualifiedBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#F59E0B',
-  },
-  teamName: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  secondaryStatsText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 3,
-  },
-  primaryValueBox: {
-    alignItems: 'flex-end',
-    marginLeft: 8,
-  },
-  primaryValueText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#00E676',
-  },
-  primaryLabelText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#94A3B8',
-    marginTop: 1,
-  },
-  emptyBox: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.canvas,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    backBtn: {
+      padding: 6,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    scopeRow: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      padding: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    scopeBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 6,
+    },
+    activeScopeBtn: {
+      backgroundColor: theme.primarySubtle,
+    },
+    scopeBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    activeScopeBtnText: {
+      color: theme.brand,
+    },
+    categoryBar: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    categoryTab: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    activeCategoryTab: {
+      borderBottomWidth: 2,
+      borderBottomColor: theme.brand,
+    },
+    categoryTabText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    activeCategoryTabText: {
+      color: theme.brand,
+    },
+    disclosureBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    disclosureText: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      marginLeft: 8,
+      flex: 1,
+      lineHeight: 15,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 32,
+    },
+    rankCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    rankBadge: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderWidth: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+      backgroundColor: theme.surfaceAlt,
+    },
+    rankNumber: {
+      fontSize: 13,
+      fontWeight: '800',
+      fontVariant: ['tabular-nums'],
+    },
+    playerInfoBox: {
+      flex: 1,
+    },
+    playerNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    playerName: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    unqualifiedBadge: {
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+      marginLeft: 6,
+    },
+    unqualifiedBadgeText: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: theme.warning,
+    },
+    teamName: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    secondaryStatsText: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      marginTop: 3,
+    },
+    primaryValueBox: {
+      alignItems: 'flex-end',
+      marginLeft: 8,
+    },
+    primaryValueText: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.brand,
+      fontVariant: ['tabular-nums'],
+    },
+    primaryLabelText: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      marginTop: 1,
+    },
+    emptyBox: {
+      padding: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      marginTop: 12,
+    },
+    emptySubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      marginTop: 6,
+    },
+  });

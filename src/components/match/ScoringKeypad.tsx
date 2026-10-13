@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExtraType } from '../../types/cricket';
 import { BallInput } from '../../engine/cricketEngine';
-import { Colors } from '../../utils/colors';
+import { useTheme, ThemeColors } from '../../theme/useTheme';
 
 interface ScoringKeypadProps {
   onScoreBall: (input: BallInput) => void;
@@ -20,6 +20,9 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
   onSwapStrike,
   disabled = false,
 }) => {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [selectedExtra, setSelectedExtra] = useState<ExtraType>('none');
   const [noBallSubtype, setNoBallSubtype] = useState<'bat' | 'bye' | 'legBye'>('bat');
 
@@ -328,229 +331,230 @@ export const ScoringKeypad: React.FC<ScoringKeypadProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 14,
-    paddingBottom: 22,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  extraBanner: {
-    backgroundColor: '#FEF3C7',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  extraBannerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  noBallSubtypesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 6,
-  },
-  subTypeChip: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: '#FDE68A',
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-  },
-  subTypeChipActive: {
-    backgroundColor: '#B45309',
-    borderColor: '#92400E',
-  },
-  subTypeChipText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#92400E',
-  },
-  subTypeChipTextActive: {
-    color: '#FFFFFF',
-  },
-  extraBannerText: {
-    color: '#92400E',
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-  },
-  extraBannerType: {
-    fontWeight: '900',
-    color: '#B45309',
-  },
-  cancelExtraBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: '#FDE68A',
-    borderRadius: 4,
-  },
-  cancelExtraText: {
-    color: '#B45309',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-  runGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'space-between',
-  },
-  runBtn: {
-    width: '31%',
-    minHeight: 56, // Ergonomic 56dp minimum touch target
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    paddingVertical: 8,
-  },
-  dotBtn: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#CBD5E1',
-  },
-  fourBtn: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#34D399',
-  },
-  fourText: {
-    color: '#059669',
-  },
-  fourSub: {
-    color: '#059669',
-  },
-  sixBtn: {
-    backgroundColor: '#FAF5FF',
-    borderColor: '#C084FC',
-  },
-  sixText: {
-    color: '#7E22CE',
-  },
-  sixSub: {
-    color: '#7E22CE',
-  },
-  runBtnText: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#0F172A',
-    fontVariant: ['tabular-nums'],
-  },
-  runBtnSub: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748B',
-    marginTop: 1,
-    letterSpacing: 0.5,
-  },
-  extrasRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-    justifyContent: 'space-between',
-  },
-  extraBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  extraBtnActive: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-  },
-  extraBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#475569',
-  },
-  extraBtnTextActive: {
-    color: '#B45309',
-    fontWeight: '900',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
-  },
-  wicketBtn: {
-    flex: 2.2,
-    minHeight: 56, // 56dp ergonomic height
-    backgroundColor: Colors.accentRed,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    shadowColor: Colors.accentRed,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  wicketBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  swapBtn: {
-    flex: 1,
-    minHeight: 56, // 56dp ergonomic height
-    backgroundColor: '#E2E8F0',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  swapBtnText: {
-    color: '#1E293B',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  undoBtn: {
-    flex: 1,
-    minHeight: 56, // 56dp ergonomic height
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  undoBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  allRunBtn: {
-    flex: 1,
-    minHeight: 56,
-    backgroundColor: '#38BDF8',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  allRunText: {
-    color: '#082F49',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-});
+function createStyles(theme: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      padding: 14,
+      paddingBottom: 22,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    extraBanner: {
+      backgroundColor: theme.statusWarningBg,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: theme.statusWarning,
+    },
+    extraBannerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    noBallSubtypesRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 6,
+    },
+    subTypeChip: {
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 6,
+      backgroundColor: theme.raised,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    subTypeChipActive: {
+      backgroundColor: theme.brand,
+      borderColor: theme.brand,
+    },
+    subTypeChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    subTypeChipTextActive: {
+      color: theme.brandText,
+      fontWeight: '800',
+    },
+    extraBannerText: {
+      color: theme.statusWarning,
+      fontSize: 12,
+      fontWeight: '700',
+      flex: 1,
+    },
+    extraBannerType: {
+      fontWeight: '800',
+      color: theme.statusWarning,
+    },
+    cancelExtraBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      backgroundColor: theme.raised,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    cancelExtraText: {
+      color: theme.textPrimary,
+      fontWeight: '700',
+      fontSize: 11,
+    },
+    runGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      justifyContent: 'space-between',
+    },
+    runBtn: {
+      width: '31%',
+      minHeight: 56, // Ergonomic 56dp minimum touch target
+      backgroundColor: theme.keypadBtnBg,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.keypadBtnBorder,
+      paddingVertical: 8,
+    },
+    dotBtn: {
+      backgroundColor: theme.keypadDotBg,
+      borderColor: theme.border,
+    },
+    fourBtn: {
+      backgroundColor: theme.keypadFourBg,
+      borderColor: theme.keypadFourBorder,
+    },
+    fourText: {
+      color: theme.keypadFourText,
+    },
+    fourSub: {
+      color: theme.keypadFourText,
+    },
+    sixBtn: {
+      backgroundColor: theme.keypadSixBg,
+      borderColor: theme.keypadSixBorder,
+    },
+    sixText: {
+      color: theme.keypadSixText,
+    },
+    sixSub: {
+      color: theme.keypadSixText,
+    },
+    runBtnText: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: theme.keypadBtnText,
+      fontVariant: ['tabular-nums'],
+    },
+    runBtnSub: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      marginTop: 1,
+      letterSpacing: 0.3,
+    },
+    extrasRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 10,
+      justifyContent: 'space-between',
+    },
+    extraBtn: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 8,
+      backgroundColor: theme.raised,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    extraBtnActive: {
+      backgroundColor: theme.keypadExtraActiveBg,
+      borderColor: theme.keypadExtraActiveBorder,
+    },
+    extraBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    extraBtnTextActive: {
+      color: theme.keypadExtraActiveText,
+      fontWeight: '800',
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    wicketBtn: {
+      flex: 2.2,
+      minHeight: 56, // 56dp ergonomic height
+      backgroundColor: theme.keypadWicketBg,
+      borderRadius: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    wicketBtnText: {
+      color: theme.keypadWicketText,
+      fontSize: 14,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    swapBtn: {
+      flex: 1,
+      minHeight: 56, // 56dp ergonomic height
+      backgroundColor: theme.keypadSwapBg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    swapBtnText: {
+      color: theme.keypadSwapText,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    undoBtn: {
+      flex: 1,
+      minHeight: 56, // 56dp ergonomic height
+      backgroundColor: theme.keypadUndoBg,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    undoBtnText: {
+      color: theme.keypadUndoText,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    allRunBtn: {
+      flex: 1,
+      minHeight: 56,
+      backgroundColor: theme.brandTint,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.brand,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    allRunText: {
+      color: theme.brand,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+  });
+}

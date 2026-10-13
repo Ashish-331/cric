@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Match, Team, Tournament } from '../../types/cricket';
-import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme/useTheme';
+import { ThemeColors } from '../../theme/tokens';
 import { Badge } from '../../components/common/Badge';
 import { PlayerPerformanceService } from '../../services/playerPerformanceService';
 import { CanonicalMatchService } from '../../services/canonicalMatchService';
@@ -22,6 +23,9 @@ type SubSection = 'matches' | 'tournaments' | 'teams' | 'stats' | 'highlights';
 type MatchFilter = 'your' | 'played' | 'network' | 'all';
 
 export default function MyCricketScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const {
     matches,
     teams,
@@ -204,7 +208,7 @@ export default function MyCricketScreen() {
             style={styles.actionChip}
             onPress={() => router.push(`/match/${item.id}`)}
           >
-            <Ionicons name="stats-chart" size={13} color="#00E5FF" />
+            <Ionicons name="stats-chart" size={13} color={theme.textSecondary} />
             <Text style={styles.actionChipText}>Insights</Text>
           </TouchableOpacity>
 
@@ -214,7 +218,7 @@ export default function MyCricketScreen() {
                 style={styles.actionChip}
                 onPress={() => router.push(`/tournament/${item.tournamentId}`)}
               >
-                <Ionicons name="grid-outline" size={13} color="#00E676" />
+                <Ionicons name="grid-outline" size={13} color={theme.primary} />
                 <Text style={styles.actionChipText}>Table</Text>
               </TouchableOpacity>
 
@@ -222,7 +226,7 @@ export default function MyCricketScreen() {
                 style={styles.actionChip}
                 onPress={() => router.push('/leaderboards')}
               >
-                <Ionicons name="podium-outline" size={13} color="#FFB300" />
+                <Ionicons name="podium-outline" size={13} color={theme.warning} />
                 <Text style={styles.actionChipText}>Leaderboard</Text>
               </TouchableOpacity>
             </>
@@ -233,7 +237,7 @@ export default function MyCricketScreen() {
               style={styles.scoreChip}
               onPress={() => router.push(`/match/${item.id}/scorer`)}
             >
-              <Ionicons name="flash" size={13} color="#FFF" />
+              <Ionicons name="flash" size={13} color={theme.surface} />
               <Text style={styles.scoreChipText}>Score</Text>
             </TouchableOpacity>
           )}
@@ -247,14 +251,14 @@ export default function MyCricketScreen() {
       {/* Top Bar matching reference */}
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.menuBtn} onPress={() => setDrawerVisible(true)}>
-          <Ionicons name="menu" size={24} color="#FFFFFF" />
+          <Ionicons name="menu" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>My Cricket</Text>
         <TouchableOpacity
           style={styles.startMatchBtn}
           onPress={() => router.push('/(tabs)/new-match')}
         >
-          <Ionicons name="add" size={18} color="#070D1E" />
+          <Ionicons name="add" size={18} color={theme.surface} />
           <Text style={styles.startMatchBtnText}>Start Match</Text>
         </TouchableOpacity>
       </View>
@@ -314,11 +318,11 @@ export default function MyCricketScreen() {
             renderItem={renderMatchCard}
             contentContainerStyle={styles.listContent}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00E676" />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
             }
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="tennisball-outline" size={48} color="#475569" />
+                <Ionicons name="tennisball-outline" size={48} color={theme.textMuted} />
                 <Text style={styles.emptyTitle}>No {matchFilter} matches found</Text>
                 <Text style={styles.emptySubtitle}>
                   {matchFilter === 'your'
@@ -347,7 +351,7 @@ export default function MyCricketScreen() {
           style={styles.sectionBody}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00E676" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
           }
         >
           <View style={styles.subHeaderRow}>
@@ -356,14 +360,14 @@ export default function MyCricketScreen() {
               style={styles.addSmallBtn}
               onPress={() => router.push('/tournaments/create')}
             >
-              <Ionicons name="add" size={14} color="#FFF" />
+              <Ionicons name="add" size={14} color={theme.surface} />
               <Text style={styles.addSmallBtnText}>Create Series</Text>
             </TouchableOpacity>
           </View>
 
           {userTournaments.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="trophy-outline" size={48} color="#475569" />
+              <Ionicons name="trophy-outline" size={48} color={theme.textMuted} />
               <Text style={styles.emptyTitle}>No Tournaments Yet</Text>
               <Text style={styles.emptySubtitle}>
                 Create or register your team into community cricket leagues.
@@ -396,7 +400,7 @@ export default function MyCricketScreen() {
           style={styles.sectionBody}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00E676" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
           }
         >
           <View style={styles.subHeaderRow}>
@@ -405,14 +409,14 @@ export default function MyCricketScreen() {
               style={styles.addSmallBtn}
               onPress={() => router.push('/(tabs)/teams')}
             >
-              <Ionicons name="add" size={14} color="#FFF" />
+              <Ionicons name="add" size={14} color={theme.surface} />
               <Text style={styles.addSmallBtnText}>Manage Teams</Text>
             </TouchableOpacity>
           </View>
 
           {userTeams.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="people-outline" size={48} color="#475569" />
+              <Ionicons name="people-outline" size={48} color={theme.textMuted} />
               <Text style={styles.emptyTitle}>No Teams Associated</Text>
               <Text style={styles.emptySubtitle}>
                 Join a club or create your own cricket team.
@@ -426,14 +430,14 @@ export default function MyCricketScreen() {
                 onPress={() => router.push(`/teams/${team.id}`)}
               >
                 <View style={styles.teamCardRow}>
-                  <View style={[styles.teamAvatar, { backgroundColor: team.primaryColor }]}>
+                  <View style={[styles.teamAvatar, { backgroundColor: team.primaryColor || theme.primary }]}>
                     <Text style={styles.teamAvatarText}>{team.shortName}</Text>
                   </View>
                   <View style={styles.teamCardInfo}>
                     <Text style={styles.teamCardTitle}>{team.name}</Text>
                     <Text style={styles.teamCardSub}>{team.players.length} Players on roster</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#64748B" />
+                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
                 </View>
               </TouchableOpacity>
             ))
@@ -445,7 +449,7 @@ export default function MyCricketScreen() {
       {activeSection === 'stats' && (
         <ScrollView style={styles.sectionBody} contentContainerStyle={styles.listContent}>
           <View style={styles.statsPromoCard}>
-            <Ionicons name="analytics" size={40} color="#00E676" />
+            <Ionicons name="analytics" size={40} color={theme.primary} />
             <Text style={styles.statsPromoTitle}>Player Career Figures</Text>
             <Text style={styles.statsPromoSubtitle}>
               View your canonical batting, bowling, wagon wheel shot charts, and personal milestones.
@@ -464,13 +468,13 @@ export default function MyCricketScreen() {
       {activeSection === 'highlights' && (
         <ScrollView style={styles.sectionBody} contentContainerStyle={styles.listContent}>
           <View style={styles.statsPromoCard}>
-            <Ionicons name="film-outline" size={40} color="#00E5FF" />
+            <Ionicons name="film-outline" size={40} color={theme.textSecondary} />
             <Text style={styles.statsPromoTitle}>Key Event Timeline & Highlights</Text>
             <Text style={styles.statsPromoSubtitle}>
               Timeline of key match dismissals, boundary streaks, and certified milestones derived from authoritative ball-by-ball actions.
             </Text>
             <View style={styles.highlightNoticeBox}>
-              <Ionicons name="information-circle-outline" size={18} color="#FFB300" />
+              <Ionicons name="information-circle-outline" size={18} color={theme.warning} />
               <Text style={styles.highlightNoticeText}>
                 Free score-based highlights are active. Live video stream transport is gated by provider configuration.
               </Text>
@@ -488,362 +492,385 @@ export default function MyCricketScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  menuBtn: {
-    padding: 6,
-  },
-  topBarTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  startMatchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#00E676',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  startMatchBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#070D1E',
-    marginLeft: 4,
-  },
-  subSectionBar: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  subSectionTab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  activeSubSectionTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#00E676',
-  },
-  subSectionTabText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94A3B8',
-  },
-  activeSubSectionTabText: {
-    color: '#00E676',
-  },
-  sectionBody: {
-    flex: 1,
-  },
-  filterChipRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#070D1E',
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#0C142B',
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginRight: 8,
-  },
-  activeFilterChip: {
-    backgroundColor: '#00E676',
-    borderColor: '#00E676',
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94A3B8',
-  },
-  activeFilterChipText: {
-    color: '#070D1E',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  matchCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  headerTitleBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  venueText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '600',
-    marginRight: 6,
-  },
-  ballTag: {
-    backgroundColor: '#1E2C4F',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  ballTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#FFB300',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  teamsBox: {
-    paddingVertical: 4,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  teamBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  colorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  teamNameText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  scoreNum: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#F8FAFC',
-  },
-  resultBox: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#121C38',
-  },
-  resultSummaryText: {
-    fontSize: 12,
-    color: '#00E676',
-    fontWeight: '700',
-  },
-  cardActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#121C38',
-  },
-  actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#121C38',
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  actionChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginLeft: 4,
-  },
-  scoreChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 'auto',
-    backgroundColor: '#0284C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  scoreChipText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFF',
-    marginLeft: 4,
-  },
-  subHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  subSectionHeaderTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  addSmallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0284C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  addSmallBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFF',
-    marginLeft: 4,
-  },
-  tournNameText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 4,
-  },
-  tournDetailText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  teamCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  teamAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  teamAvatarText: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  teamCardInfo: {
-    flex: 1,
-  },
-  teamCardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  teamCardSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  statsPromoCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginTop: 16,
-  },
-  statsPromoTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 12,
-  },
-  statsPromoSubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  statsActionBtn: {
-    backgroundColor: '#00E676',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 18,
-  },
-  statsActionBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#070D1E',
-  },
-  highlightNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#121C38',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  highlightNoticeText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginLeft: 8,
-    flex: 1,
-  },
-  emptyContainer: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  emptyActionBtn: {
-    marginTop: 16,
-    backgroundColor: '#00E676',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  emptyActionBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#070D1E',
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 12,
+      backgroundColor: theme.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    menuBtn: {
+      padding: 6,
+    },
+    topBarTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.text,
+      letterSpacing: 0.3,
+    },
+    startMatchBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      minHeight: 38,
+    },
+    startMatchBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.surface,
+      marginLeft: 4,
+    },
+    subSectionBar: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    subSectionTab: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    activeSubSectionTab: {
+      borderBottomWidth: 2,
+      borderBottomColor: theme.primary,
+    },
+    subSectionTabText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    activeSubSectionTabText: {
+      color: theme.primary,
+      fontWeight: '800',
+    },
+    sectionBody: {
+      flex: 1,
+    },
+    filterChipRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: theme.background,
+    },
+    filterChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginRight: 8,
+      minHeight: 34,
+      justifyContent: 'center',
+    },
+    activeFilterChip: {
+      backgroundColor: theme.primary,
+      borderColor: theme.primary,
+    },
+    filterChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.textSecondary,
+    },
+    activeFilterChipText: {
+      color: theme.surface,
+      fontWeight: '700',
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 32,
+    },
+    matchCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    headerTitleBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    venueText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      fontWeight: '500',
+      marginRight: 6,
+    },
+    ballTag: {
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    ballTagText: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    badgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    teamsBox: {
+      paddingVertical: 4,
+    },
+    scoreRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    teamBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    colorDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginRight: 8,
+    },
+    teamNameText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    scoreNum: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.text,
+      fontVariant: ['tabular-nums'],
+    },
+    resultBox: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    resultSummaryText: {
+      fontSize: 12,
+      color: theme.primary,
+      fontWeight: '600',
+    },
+    cardActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 10,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    actionChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 6,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      minHeight: 32,
+    },
+    actionChipText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: theme.textSecondary,
+      marginLeft: 4,
+    },
+    scoreChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 'auto',
+      backgroundColor: theme.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      minHeight: 32,
+    },
+    scoreChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.surface,
+      marginLeft: 4,
+    },
+    subHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    subSectionHeaderTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    addSmallBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      minHeight: 32,
+    },
+    addSmallBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.surface,
+      marginLeft: 4,
+    },
+    tournNameText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.text,
+      marginTop: 4,
+    },
+    tournDetailText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 4,
+    },
+    teamCardRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    teamAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    teamAvatarText: {
+      color: '#FFF',
+      fontWeight: '800',
+      fontSize: 14,
+    },
+    teamCardInfo: {
+      flex: 1,
+    },
+    teamCardTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    teamCardSub: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    statsPromoCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 24,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginTop: 16,
+    },
+    statsPromoTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.text,
+      marginTop: 12,
+    },
+    statsPromoSubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      marginTop: 8,
+      lineHeight: 18,
+    },
+    statsActionBtn: {
+      backgroundColor: theme.primary,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+      marginTop: 18,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    statsActionBtnText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.surface,
+    },
+    highlightNoticeBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surfaceAlt,
+      padding: 12,
+      borderRadius: 8,
+      marginTop: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    highlightNoticeText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginLeft: 8,
+      flex: 1,
+      lineHeight: 16,
+    },
+    emptyContainer: {
+      padding: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.text,
+      marginTop: 12,
+    },
+    emptySubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      marginTop: 6,
+      lineHeight: 18,
+    },
+    emptyActionBtn: {
+      marginTop: 16,
+      backgroundColor: theme.primary,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 8,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    emptyActionBtnText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.surface,
+    },
+  });

@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Innings, Player, Team, BatterStats } from '../../types/cricket';
-import { Colors } from '../../utils/colors';
 import { calculateRunRate } from '../../engine/cricketEngine';
+import { useTheme, ThemeColors } from '../../theme/useTheme';
 
 interface ScorecardTableProps {
   innings: Innings;
@@ -18,6 +18,9 @@ export const ScorecardTable: React.FC<ScorecardTableProps> = ({
   bowlingTeam,
   allPlayers,
 }) => {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const getPlayer = (id: string) => allPlayers.find((p) => p.id === id);
 
   const batterList = Object.values(innings.batterStats).sort(
@@ -99,65 +102,77 @@ export const ScorecardTable: React.FC<ScorecardTableProps> = ({
         <Text style={[styles.colSR, styles.headerText]}>SR</Text>
       </View>
 
+      {/* Batting Table Rows */}
       {batterList.map((stat) => {
         const player = getPlayer(stat.playerId);
         return (
-          <View key={stat.playerId} style={[styles.row, styles.itemRow]}>
-            <TouchableOpacity
-              style={styles.colBatter}
-              onPress={() => router.push(`/player/${stat.playerId}`)}
-            >
-              <Text style={styles.batterName}>{player ? player.name : 'Unknown Player'}</Text>
-              <Text style={styles.dismissalText}>{formatDismissal(stat)}</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            key={stat.playerId}
+            activeOpacity={0.7}
+            onPress={() => router.push(`/player/${stat.playerId}`)}
+            style={[styles.row, styles.itemRow]}
+          >
+            <View style={styles.colBatter}>
+              <Text style={styles.batterName} numberOfLines={1}>
+                {player ? player.name : 'Unknown Player'}
+              </Text>
+              <Text style={styles.dismissalText} numberOfLines={1}>
+                {formatDismissal(stat)}
+              </Text>
+            </View>
             <Text style={[styles.colNum, styles.runsText]}>{stat.runs}</Text>
             <Text style={styles.colNum}>{stat.ballsFaced}</Text>
             <Text style={styles.colNum}>{stat.fours}</Text>
             <Text style={styles.colNum}>{stat.sixes}</Text>
-            <Text style={styles.colSR}>{stat.strikeRate}</Text>
-          </View>
+            <Text style={styles.colSR}>{stat.strikeRate.toFixed(1)}</Text>
+          </TouchableOpacity>
         );
       })}
 
       {/* Extras Row */}
       <View style={[styles.row, styles.extrasRow]}>
-        <View style={styles.colBatter}>
-          <Text style={styles.extrasLabel}>
-            Extras (w {innings.extras.wides}, nb {innings.extras.noBalls}, b {innings.extras.byes}, lb {innings.extras.legByes})
-          </Text>
-        </View>
+        <Text style={[styles.colBatter, styles.extrasLabel]}>
+          Extras (w {innings.extras.wides}, nb {innings.extras.noBalls}, b {innings.extras.byes}, lb {innings.extras.legByes})
+        </Text>
         <Text style={[styles.colNum, styles.runsText]}>{innings.extras.total}</Text>
+        <Text style={styles.colNum} />
+        <Text style={styles.colNum} />
+        <Text style={styles.colNum} />
+        <Text style={styles.colSR} />
       </View>
 
       {/* Total Score Row */}
       <View style={[styles.row, styles.totalRow]}>
-        <View style={styles.colBatter}>
-          <Text style={styles.totalLabel}>
-            Total ({innings.oversFormatted} Overs, RR {currentRunRate.toFixed(2)})
-          </Text>
-        </View>
-        <Text style={styles.totalScore}>
+        <Text style={[styles.colBatter, styles.totalLabel]}>
+          Total ({innings.oversFormatted} ov, RR {currentRunRate})
+        </Text>
+        <Text style={[styles.colNum, styles.totalScore]}>
           {innings.totalRuns}/{innings.totalWickets}
         </Text>
+        <Text style={styles.colNum} />
+        <Text style={styles.colNum} />
+        <Text style={styles.colNum} />
+        <Text style={styles.colSR} />
       </View>
 
       {/* Fall of Wickets */}
       {innings.fallOfWickets.length > 0 && (
         <View style={styles.fowContainer}>
-          <Text style={styles.fowTitle}>Fall of Wickets:</Text>
+          <Text style={styles.fowTitle}>Fall of Wickets</Text>
           <Text style={styles.fowContent}>
             {innings.fallOfWickets
               .map((fow) => {
                 const player = getPlayer(fow.playerDismissedId);
-                return `${fow.score}-${fow.wicketNumber} (${player?.name || 'Batsman'}, ${fow.oversFormatted} ov)`;
+                const pName = player ? player.name.split(' ')[0] : 'Wkt';
+                return `${fow.score}-${fow.wicketNumber} (${pName}, ${fow.oversFormatted} ov)`;
               })
-              .join(', ')}
+              .join('  •  ')}
           </Text>
         </View>
       )}
 
-      {/* Bowling Section */}
-      <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+      {/* Bowling Section Header */}
+      <View style={[styles.sectionHeader, { marginTop: 20 }]}>
         <Text style={styles.sectionTitle}>Bowling — {bowlingTeam.name}</Text>
       </View>
 
@@ -171,160 +186,170 @@ export const ScorecardTable: React.FC<ScorecardTableProps> = ({
         <Text style={[styles.colSR, styles.headerText]}>ECON</Text>
       </View>
 
+      {/* Bowling Table Rows */}
       {bowlerList.map((stat) => {
         const player = getPlayer(stat.playerId);
         return (
-          <View key={stat.playerId} style={[styles.row, styles.itemRow]}>
-            <TouchableOpacity
-              style={styles.colBowler}
-              onPress={() => router.push(`/player/${stat.playerId}`)}
-            >
-              <Text style={styles.batterName}>{player ? player.name : 'Unknown Bowler'}</Text>
-              <Text style={styles.dismissalText}>Dots: {stat.dots}</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            key={stat.playerId}
+            activeOpacity={0.7}
+            onPress={() => router.push(`/player/${stat.playerId}`)}
+            style={[styles.row, styles.itemRow]}
+          >
+            <View style={styles.colBowler}>
+              <Text style={styles.batterName} numberOfLines={1}>
+                {player ? player.name : 'Unknown Player'}
+              </Text>
+            </View>
             <Text style={styles.colNum}>{stat.oversFormatted}</Text>
             <Text style={styles.colNum}>{stat.maidens}</Text>
             <Text style={styles.colNum}>{stat.runsConceded}</Text>
             <Text style={[styles.colNum, styles.wicketsText]}>{stat.wickets}</Text>
-            <Text style={styles.colSR}>{stat.economy}</Text>
-          </View>
+            <Text style={styles.colSR}>{stat.economy.toFixed(1)}</Text>
+          </TouchableOpacity>
         );
       })}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: 6,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  tableHeader: {
-    backgroundColor: '#F8FAFC',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  headerText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#64748B',
-    textTransform: 'uppercase',
-  },
-  itemRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  colBatter: {
-    flex: 3.5,
-  },
-  colBowler: {
-    flex: 3.5,
-  },
-  colNum: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    fontVariant: ['tabular-nums'],
-  },
-  colSR: {
-    flex: 1.5,
-    textAlign: 'right',
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    fontVariant: ['tabular-nums'],
-  },
-  batterName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  dismissalText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  runsText: {
-    fontWeight: '800',
-    color: Colors.primary,
-    fontVariant: ['tabular-nums'],
-  },
-  wicketsText: {
-    fontWeight: '800',
-    color: Colors.accentRed,
-    fontVariant: ['tabular-nums'],
-  },
-  extrasRow: {
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 8,
-  },
-  extrasLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  totalRow: {
-    backgroundColor: '#F1F5F9',
-    paddingVertical: 10,
-    borderBottomWidth: 0,
-    borderRadius: 8,
-    marginTop: 4,
-    paddingHorizontal: 8,
-  },
-  totalLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  totalScore: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: Colors.pitchGreen,
-    fontVariant: ['tabular-nums'],
-  },
-  fowContainer: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  fowTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  fowContent: {
-    fontSize: 12,
-    color: '#334155',
-    lineHeight: 18,
-  },
-});
+function createStyles(theme: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 14,
+    },
+    sectionHeader: {
+      marginBottom: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderSubdued,
+      paddingBottom: 6,
+    },
+    sectionTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 7,
+    },
+    tableHeader: {
+      backgroundColor: theme.raised,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderSubdued,
+      paddingVertical: 5,
+      borderRadius: 6,
+      marginBottom: 2,
+    },
+    headerText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      textTransform: 'uppercase',
+    },
+    itemRow: {
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderSubdued,
+    },
+    colBatter: {
+      flex: 3.5,
+    },
+    colBowler: {
+      flex: 3.5,
+    },
+    colNum: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 13,
+      fontWeight: '500',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    colSR: {
+      flex: 1.5,
+      textAlign: 'right',
+      fontSize: 13,
+      fontWeight: '500',
+      color: theme.textSecondary,
+      fontVariant: ['tabular-nums'],
+    },
+    batterName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.textPrimary,
+    },
+    dismissalText: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      marginTop: 1,
+    },
+    runsText: {
+      fontWeight: '700',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    wicketsText: {
+      fontWeight: '700',
+      color: theme.statusError,
+      fontVariant: ['tabular-nums'],
+    },
+    extrasRow: {
+      backgroundColor: theme.raised,
+      paddingVertical: 6,
+      paddingHorizontal: 6,
+      borderRadius: 6,
+      marginTop: 4,
+    },
+    extrasLabel: {
+      fontSize: 11,
+      fontWeight: '500',
+      color: theme.textSecondary,
+    },
+    totalRow: {
+      backgroundColor: theme.raised,
+      paddingVertical: 8,
+      borderBottomWidth: 0,
+      borderRadius: 6,
+      marginTop: 4,
+      paddingHorizontal: 6,
+    },
+    totalLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    totalScore: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: theme.brand,
+      fontVariant: ['tabular-nums'],
+    },
+    fowContainer: {
+      marginTop: 10,
+      padding: 8,
+      backgroundColor: theme.raised,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    fowTitle: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      textTransform: 'uppercase',
+      marginBottom: 3,
+    },
+    fowContent: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      lineHeight: 16,
+      fontVariant: ['tabular-nums'],
+    },
+  });
+}

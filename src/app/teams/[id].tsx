@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
-import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme/useTheme';
+import { ThemeColors } from '../../theme/tokens';
 import { PlayingRole, BattingHand, BowlingStyle, Player, Team, PlayerSearchMatchResult } from '../../types/cricket';
 import { CricketHaptics } from '../../services/haptics';
 import { StatsRollupEngine } from '../../engine/statsRollupEngine';
@@ -36,6 +37,9 @@ const BOWLING_STYLES: { key: BowlingStyle; label: string }[] = [
 ];
 
 export default function TeamDetailScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
     teams,
@@ -319,7 +323,7 @@ export default function TeamDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header Banner */}
-      <View style={[styles.headerBanner, { borderLeftColor: team.primaryColor || '#004BA0' }]}>
+      <View style={[styles.headerBanner, { borderLeftColor: team.primaryColor || theme.primary }]}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.teamTitle}>{team.name}</Text>
@@ -338,8 +342,8 @@ export default function TeamDetailScreen() {
               <Text style={styles.roleTagManagerText}>Manager</Text>
             </View>
           ) : isMember ? (
-            <View style={[styles.roleTag, { backgroundColor: '#ECFDF5' }]}>
-              <Text style={[styles.roleTagText, { color: '#047857' }]}>Squad Member</Text>
+            <View style={[styles.roleTag, { backgroundColor: theme.primarySubtle }]}>
+              <Text style={[styles.roleTagText, { color: theme.primary }]}>Squad Member</Text>
             </View>
           ) : (
             <TouchableOpacity
@@ -401,7 +405,7 @@ export default function TeamDetailScreen() {
               setIsAddMemberModalVisible(true);
             }}
           >
-            <Ionicons name="person-add" size={14} color="#070D1E" />
+            <Ionicons name="person-add" size={14} color={theme.surface} />
             <Text style={styles.addMemberBtnText}>Add Player</Text>
           </TouchableOpacity>
         )}
@@ -474,7 +478,7 @@ export default function TeamDetailScreen() {
                     style={styles.removeActionBtn}
                     onPress={() => handleRemovePlayer(item)}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    <Ionicons name="trash-outline" size={16} color={theme.danger} />
                   </TouchableOpacity>
                 </View>
               )}
@@ -483,7 +487,7 @@ export default function TeamDetailScreen() {
         }}
         ListEmptyComponent={
           <View style={styles.emptySquadBox}>
-            <MaterialCommunityIcons name="account-group-outline" size={44} color="#64748B" />
+            <MaterialCommunityIcons name="account-group-outline" size={44} color={theme.textMuted} />
             <Text style={styles.emptySquadTitle}>No Members on Roster</Text>
             <Text style={styles.emptySquadSub}>
               Use "Add Player" above to build this team's roster.
@@ -499,7 +503,7 @@ export default function TeamDetailScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Player to Team Sheet</Text>
               <TouchableOpacity onPress={() => setIsAddMemberModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#94A3B8" />
+                <Ionicons name="close" size={24} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -515,11 +519,11 @@ export default function TeamDetailScreen() {
                     value={memberSearchQuery}
                     onChangeText={handleSearchMember}
                     placeholder="Search player by name, email, or phone..."
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                   />
 
                   {isSearchingMember && (
-                    <Text style={[styles.phoneDisclaimer, { color: '#00E5FF', textAlign: 'center' }]}>
+                    <Text style={[styles.phoneDisclaimer, { color: theme.primary, textAlign: 'center' }]}>
                       Searching player profiles...
                     </Text>
                   )}
@@ -534,7 +538,7 @@ export default function TeamDetailScreen() {
                               <Text style={styles.playerSearchName}>{p.name}</Text>
                               {p.isClaimed && (
                                 <View style={styles.verifiedBadge}>
-                                  <Ionicons name="checkmark-circle" size={12} color="#00E676" />
+                                  <Ionicons name="checkmark-circle" size={12} color={theme.primary} />
                                   <Text style={styles.verifiedBadgeText}>Verified</Text>
                                 </View>
                               )}
@@ -558,7 +562,7 @@ export default function TeamDetailScreen() {
                     style={styles.manualPlayerToggleBtn}
                     onPress={() => setShowManualMemberForm(true)}
                   >
-                    <Ionicons name="person-add-outline" size={16} color="#00E5FF" />
+                    <Ionicons name="person-add-outline" size={16} color={theme.primary} />
                     <Text style={styles.manualPlayerToggleText}>
                       Player not found? Create new player profile
                     </Text>
@@ -570,7 +574,7 @@ export default function TeamDetailScreen() {
                     style={styles.backToSearchBtn}
                     onPress={() => setShowManualMemberForm(false)}
                   >
-                    <Ionicons name="arrow-back" size={14} color="#00E5FF" />
+                    <Ionicons name="arrow-back" size={14} color={theme.primary} />
                     <Text style={styles.backToSearchBtnText}>Back to search</Text>
                   </TouchableOpacity>
 
@@ -581,7 +585,7 @@ export default function TeamDetailScreen() {
                     value={playerName}
                     onChangeText={setPlayerName}
                     placeholder="e.g. Suryakumar Yadav"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                   />
 
                   {/* Playing Role */}
@@ -683,7 +687,7 @@ export default function TeamDetailScreen() {
                     value={playerEmail}
                     onChangeText={setPlayerEmail}
                     placeholder="player@example.com"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="email-address"
                     autoCapitalize="none"
                   />
@@ -697,7 +701,7 @@ export default function TeamDetailScreen() {
                     value={playerPhone}
                     onChangeText={setPlayerPhone}
                     placeholder="e.g. +91 98765 43210"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={theme.textMuted}
                     keyboardType="phone-pad"
                   />
                   <Text style={styles.phoneDisclaimer}>
@@ -752,502 +756,530 @@ export default function TeamDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notFoundText: {
-    color: '#94A3B8',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  headerBanner: {
-    backgroundColor: '#0C142B',
-    padding: 16,
-    borderLeftWidth: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  teamTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  teamSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  headerCaptainText: {
-    fontSize: 12,
-    color: '#00E676',
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  roleTagManager: {
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#00E5FF',
-  },
-  roleTagManagerText: {
-    color: '#00E5FF',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  roleTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  roleTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  joinBtn: {
-    backgroundColor: '#00E676',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  joinBtnPending: {
-    backgroundColor: '#1E2C4F',
-  },
-  joinBtnText: {
-    color: '#070D1E',
-    fontWeight: '900',
-    fontSize: 12,
-  },
-  inboxCard: {
-    backgroundColor: '#121C38',
-    margin: 16,
-    marginBottom: 0,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  inboxTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFB300',
-    marginBottom: 10,
-  },
-  reqRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  reqName: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  reqSub: {
-    color: '#94A3B8',
-    fontSize: 11,
-  },
-  approveBtn: {
-    backgroundColor: '#00E676',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    marginRight: 6,
-  },
-  approveText: {
-    color: '#070D1E',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-  declineBtn: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  declineText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-  squadHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  squadHeading: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  squadSubText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  addMemberBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#00E676',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    gap: 6,
-  },
-  addMemberBtnText: {
-    color: '#070D1E',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  list: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  playerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0C142B',
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  numBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#121C38',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  numText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  playerName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  captainBadge: {
-    backgroundColor: '#00E676',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  captainBadgeText: {
-    color: '#070D1E',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  wkBadge: {
-    backgroundColor: '#00E5FF',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  wkBadgeText: {
-    color: '#070D1E',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  guestBadge: {
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  guestBadgeText: {
-    color: '#070D1E',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  roleSub: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 3,
-  },
-  phoneMetaPrivate: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: 3,
-  },
-  playerActionsCol: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: 8,
-  },
-  captainActionBtn: {
-    backgroundColor: '#121C38',
-    borderWidth: 1,
-    borderColor: '#00E676',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  captainActionText: {
-    color: '#00E676',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  removeActionBtn: {
-    padding: 6,
-  },
-  emptySquadBox: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptySquadTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-  emptySquadSub: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(7, 13, 30, 0.85)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#0C142B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    borderTopWidth: 1.5,
-    borderTopColor: '#1E2C4F',
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  formInput: {
-    backgroundColor: '#121C38',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 14,
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
-  },
-  chipBtn: {
-    backgroundColor: '#121C38',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  chipBtnActive: {
-    backgroundColor: '#00E676',
-    borderColor: '#00E676',
-  },
-  chipBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94A3B8',
-  },
-  chipBtnTextActive: {
-    color: '#070D1E',
-    fontWeight: '800',
-  },
-  phoneDisclaimer: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: -8,
-    marginBottom: 14,
-  },
-  scopeBox: {
-    backgroundColor: '#121C38',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  scopeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scopeRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#94A3B8',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scopeRadioActive: {
-    borderColor: '#00E676',
-  },
-  scopeRadioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#00E676',
-  },
-  scopeTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  scopeDesc: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  submitMemberBtn: {
-    backgroundColor: '#00E676',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  submitMemberBtnText: {
-    color: '#070D1E',
-    fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  searchResultsLabel: {
-    color: '#00E5FF',
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  playerSearchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#121C38',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  playerSearchName: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 230, 118, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 6,
-    gap: 2,
-  },
-  verifiedBadgeText: {
-    color: '#00E676',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  playerSearchMeta: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  selectExistingPlayerBtn: {
-    backgroundColor: '#00E676',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  selectExistingPlayerBtnText: {
-    color: '#070D1E',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  manualPlayerToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#121C38',
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    gap: 6,
-    marginTop: 6,
-  },
-  manualPlayerToggleText: {
-    color: '#00E5FF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  backToSearchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-  },
-  backToSearchBtnText: {
-    color: '#00E5FF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    centerContainer: {
+      flex: 1,
+      backgroundColor: theme.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    notFoundText: {
+      color: theme.textSecondary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    headerBanner: {
+      backgroundColor: theme.surface,
+      padding: 16,
+      borderLeftWidth: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    teamTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: theme.text,
+    },
+    teamSub: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 4,
+    },
+    headerCaptainText: {
+      fontSize: 12,
+      color: theme.primary,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    roleTagManager: {
+      backgroundColor: theme.primarySubtle,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    roleTagManagerText: {
+      color: theme.primary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    roleTag: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+    },
+    roleTagText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    joinBtn: {
+      backgroundColor: theme.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    joinBtnPending: {
+      backgroundColor: theme.surfaceAlt,
+    },
+    joinBtnText: {
+      color: theme.surface,
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    inboxCard: {
+      backgroundColor: theme.surface,
+      margin: 16,
+      marginBottom: 0,
+      padding: 14,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    inboxTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.warning,
+      marginBottom: 10,
+    },
+    reqRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    reqName: {
+      color: theme.text,
+      fontWeight: '700',
+      fontSize: 13,
+    },
+    reqSub: {
+      color: theme.textSecondary,
+      fontSize: 11,
+    },
+    approveBtn: {
+      backgroundColor: theme.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      marginRight: 6,
+      minHeight: 36,
+      justifyContent: 'center',
+    },
+    approveText: {
+      color: theme.surface,
+      fontWeight: '700',
+      fontSize: 11,
+    },
+    declineBtn: {
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.danger,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      minHeight: 36,
+      justifyContent: 'center',
+    },
+    declineText: {
+      color: theme.danger,
+      fontWeight: '700',
+      fontSize: 11,
+    },
+    squadHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 8,
+    },
+    squadHeading: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: theme.text,
+    },
+    squadSubText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    addMemberBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      gap: 6,
+      minHeight: 40,
+    },
+    addMemberBtnText: {
+      color: theme.surface,
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    list: {
+      padding: 16,
+      paddingTop: 8,
+    },
+    playerCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+      padding: 14,
+      borderRadius: 10,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    numBox: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: theme.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    numText: {
+      color: theme.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    playerName: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    captainBadge: {
+      backgroundColor: theme.primarySubtle,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    captainBadgeText: {
+      color: theme.primary,
+      fontSize: 10,
+      fontWeight: '800',
+    },
+    wkBadge: {
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    wkBadgeText: {
+      color: theme.textSecondary,
+      fontSize: 10,
+      fontWeight: '800',
+    },
+    guestBadge: {
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.warning,
+    },
+    guestBadgeText: {
+      color: theme.warning,
+      fontSize: 9,
+      fontWeight: '800',
+    },
+    roleSub: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 3,
+    },
+    phoneMetaPrivate: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 3,
+    },
+    playerActionsCol: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginLeft: 8,
+    },
+    captainActionBtn: {
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 6,
+      minHeight: 36,
+      justifyContent: 'center',
+    },
+    captainActionText: {
+      color: theme.primary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    removeActionBtn: {
+      padding: 8,
+      minHeight: 36,
+      justifyContent: 'center',
+    },
+    emptySquadBox: {
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    emptySquadTitle: {
+      color: theme.text,
+      fontSize: 15,
+      fontWeight: '700',
+      marginTop: 8,
+    },
+    emptySquadSub: {
+      color: theme.textSecondary,
+      fontSize: 13,
+      marginTop: 4,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalCard: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 20,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      maxHeight: '90%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 17,
+      fontWeight: '800',
+      color: theme.text,
+    },
+    inputLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 6,
+    },
+    formInput: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: theme.text,
+      fontSize: 15,
+      minHeight: 44,
+      marginBottom: 14,
+    },
+    chipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 14,
+    },
+    chipBtn: {
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      minHeight: 40,
+      justifyContent: 'center',
+    },
+    chipBtnActive: {
+      backgroundColor: theme.primary,
+      borderColor: theme.primary,
+    },
+    chipBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.textSecondary,
+    },
+    chipBtnTextActive: {
+      color: theme.surface,
+      fontWeight: '700',
+    },
+    phoneDisclaimer: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: -8,
+      marginBottom: 14,
+    },
+    scopeBox: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    scopeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    scopeRadio: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scopeRadioActive: {
+      borderColor: theme.primary,
+    },
+    scopeRadioDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: theme.primary,
+    },
+    scopeTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    scopeDesc: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    submitMemberBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+      minHeight: 48,
+    },
+    submitMemberBtnText: {
+      color: theme.surface,
+      fontWeight: '800',
+      fontSize: 13,
+      letterSpacing: 0.3,
+    },
+    searchResultsLabel: {
+      color: theme.textSecondary,
+      fontSize: 11,
+      fontWeight: '700',
+      marginBottom: 6,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    playerSearchItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surfaceAlt,
+      padding: 10,
+      borderRadius: 8,
+      marginBottom: 6,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    playerSearchName: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    verifiedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primarySubtle,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      marginLeft: 6,
+      gap: 2,
+    },
+    verifiedBadgeText: {
+      color: theme.primary,
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    playerSearchMeta: {
+      color: theme.textSecondary,
+      fontSize: 11,
+      marginTop: 2,
+    },
+    selectExistingPlayerBtn: {
+      backgroundColor: theme.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+      minHeight: 36,
+      justifyContent: 'center',
+    },
+    selectExistingPlayerBtnText: {
+      color: theme.surface,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    manualPlayerToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surfaceAlt,
+      paddingVertical: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      gap: 6,
+      marginTop: 6,
+      minHeight: 44,
+    },
+    manualPlayerToggleText: {
+      color: theme.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    backToSearchBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginBottom: 10,
+      minHeight: 36,
+    },
+    backToSearchBtnText: {
+      color: theme.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+  });

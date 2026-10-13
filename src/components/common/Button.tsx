@@ -7,12 +7,12 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme/useTheme';
 
-interface ButtonProps {
+export interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'wicket';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'wicket' | 'subtle';
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   loading?: boolean;
@@ -32,41 +32,50 @@ export const Button: React.FC<ButtonProps> = ({
   textStyle,
   icon,
 }) => {
-  let bg = Colors.primary;
-  let textColor = '#FFFFFF';
+  const { theme } = useTheme();
+
+  let bg = theme.brand;
+  let textColor = theme.brandText;
   let borderColor = 'transparent';
   let borderWidth = 0;
 
   if (variant === 'secondary') {
-    bg = '#E2E8F0';
-    textColor = Colors.textPrimary;
+    bg = theme.raised;
+    textColor = theme.textPrimary;
+    borderColor = theme.border;
+    borderWidth = 1;
   } else if (variant === 'outline') {
     bg = 'transparent';
-    textColor = Colors.primary;
-    borderColor = Colors.primary;
+    textColor = theme.brand;
+    borderColor = theme.brand;
     borderWidth = 1.5;
   } else if (variant === 'danger' || variant === 'wicket') {
-    bg = Colors.accentRed;
+    bg = theme.statusError;
     textColor = '#FFFFFF';
+  } else if (variant === 'subtle') {
+    bg = theme.brandTint;
+    textColor = theme.brand;
   }
 
-  const paddingVertical = size === 'sm' ? 8 : size === 'lg' ? 16 : 12;
+  const minHeight = size === 'sm' ? 36 : size === 'lg' ? 52 : 44;
+  const paddingVertical = size === 'sm' ? 6 : size === 'lg' ? 14 : 10;
   const paddingHorizontal = size === 'sm' ? 12 : size === 'lg' ? 24 : 16;
-  const fontSize = size === 'sm' ? 13 : size === 'lg' ? 17 : 15;
+  const fontSize = size === 'sm' ? 13 : size === 'lg' ? 16 : 14;
 
   return (
     <TouchableOpacity
-      activeOpacity={0.75}
+      activeOpacity={0.8}
       onPress={onPress}
       disabled={disabled || loading}
       style={[
         styles.button,
         {
-          backgroundColor: disabled ? '#CBD5E1' : bg,
-          borderColor,
+          backgroundColor: disabled ? (theme.raised) : bg,
+          borderColor: disabled ? theme.border : borderColor,
           borderWidth,
           paddingVertical,
           paddingHorizontal,
+          minHeight,
         },
         style,
       ]}
@@ -80,9 +89,9 @@ export const Button: React.FC<ButtonProps> = ({
             style={[
               styles.text,
               {
-                color: disabled ? '#94A3B8' : textColor,
+                color: disabled ? theme.textMuted : textColor,
                 fontSize,
-                marginLeft: icon ? 8 : 0,
+                marginLeft: icon ? 6 : 0,
               },
               textStyle,
             ]}
@@ -97,7 +106,7 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 10,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -105,5 +114,6 @@ const styles = StyleSheet.create({
   text: {
     fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
 });

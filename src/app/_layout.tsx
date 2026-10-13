@@ -2,23 +2,28 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CricketProvider } from '../context/CricketContext';
-import { Colors } from '../utils/colors';
+import { ThemeProvider, useTheme } from '../theme/useTheme';
 
-export default function RootLayout() {
+function RootNavigation() {
+  const { theme, isDark } = useTheme();
+
   return (
-    <CricketProvider>
-      <StatusBar style="light" />
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: {
-            backgroundColor: Colors.primaryDark,
+            backgroundColor: theme.surface,
           },
-          headerTintColor: '#FFFFFF',
+          headerTintColor: theme.textPrimary,
           headerTitleStyle: {
-            fontWeight: '800',
+            fontWeight: '700',
+            fontSize: 17,
+            color: theme.textPrimary,
           },
+          headerShadowVisible: false,
           contentStyle: {
-            backgroundColor: Colors.background,
+            backgroundColor: theme.canvas,
           },
         }}
       >
@@ -37,14 +42,14 @@ export default function RootLayout() {
         <Stack.Screen
           name="match/[id]/scorer"
           options={{
-            title: 'Live Scorer Console',
+            title: 'Live Scorer',
             headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="teams/[id]"
           options={{
-            title: 'Team Roster',
+            title: 'Team Sheet',
           }}
         />
         <Stack.Screen
@@ -57,7 +62,7 @@ export default function RootLayout() {
         <Stack.Screen
           name="auth/login"
           options={{
-            title: 'Sign In & Account',
+            title: 'Account & Sign In',
             headerBackTitle: 'Back',
             presentation: 'modal',
           }}
@@ -65,91 +70,112 @@ export default function RootLayout() {
         <Stack.Screen
           name="profile/index"
           options={{
-            title: 'Player Hub & Records',
+            title: 'Player Hub',
             headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="tournament/[id]"
           options={{
-            title: 'Tournament Centre',
+            title: 'Tournament Details',
             headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="tournaments/create"
           options={{
-            title: 'Create Tournament',
+            title: 'Organize Tournament',
             headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="leaderboards/index"
           options={{
-            headerShown: false,
+            title: 'Tournament Leaderboards',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="awards/index"
           options={{
-            headerShown: false,
+            title: 'Awards & Honours',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="performance/index"
           options={{
-            headerShown: false,
+            title: 'Performance Analysis',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="go-live/index"
           options={{
-            headerShown: false,
+            title: 'Live Score Sharing',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="associations/index"
           options={{
-            headerShown: false,
+            title: 'Associations & Leagues',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="clubs/index"
           options={{
-            headerShown: false,
+            title: 'Clubs Directory',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="app-code/index"
           options={{
-            headerShown: false,
+            title: 'App Code',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="inbox/index"
           options={{
-            headerShown: false,
+            title: 'Inbox & Invites',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="search/index"
           options={{
-            headerShown: false,
+            title: 'Search Directory',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="help/index"
           options={{
-            headerShown: false,
+            title: 'Help & Support',
+            headerBackTitle: 'Back',
           }}
         />
         <Stack.Screen
           name="notifications/index"
           options={{
-            headerShown: false,
+            title: 'Notifications',
+            headerBackTitle: 'Back',
           }}
         />
       </Stack>
-    </CricketProvider>
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <CricketProvider>
+        <RootNavigation />
+      </CricketProvider>
+    </ThemeProvider>
   );
 }

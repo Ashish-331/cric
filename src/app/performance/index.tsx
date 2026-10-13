@@ -13,10 +13,14 @@ import { WagonWheelSVG } from '../../components/match/WagonWheelSVG';
 import { PitchRadarSVG } from '../../components/match/PitchRadarSVG';
 import { Colors } from '../../utils/colors';
 import { Player, Delivery } from '../../types/cricket';
+import { useTheme } from '../../theme';
+import { ThemeColors } from '../../theme/tokens';
 
 type Tab = 'batting' | 'bowling' | 'fielding' | 'wagon' | 'radar';
 
 export default function PerformanceScreen() {
+  const { theme, colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { userProfile, teams, matches } = useCricket();
   const [activeTab, setActiveTab] = useState<Tab>('batting');
 
@@ -60,7 +64,7 @@ export default function PerformanceScreen() {
       {/* Header Bar */}
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Performance</Text>
         <View style={{ width: 40 }} />
@@ -70,13 +74,13 @@ export default function PerformanceScreen() {
         {/* Player Profile Header Card */}
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatarBox}>
-            <Ionicons name="person" size={32} color="#00E676" />
+            <Ionicons name="person" size={28} color={theme.brand} />
           </View>
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
               <Text style={styles.playerName}>{currentPlayer?.name || userProfile?.name || 'Player'}</Text>
               {userProfile?.isVerified && (
-                <Ionicons name="checkmark-circle" size={16} color="#00E676" style={{ marginLeft: 4 }} />
+                <Ionicons name="checkmark-circle" size={16} color={theme.brand} style={{ marginLeft: 4 }} />
               )}
             </View>
             <Text style={styles.playerRole}>
@@ -248,167 +252,170 @@ export default function PerformanceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  profileHeaderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginBottom: 16,
-  },
-  avatarBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#070D1E',
-    borderWidth: 2,
-    borderColor: '#00E676',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  playerName: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  playerRole: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  identityStatus: {
-    fontSize: 11,
-    color: '#00E676',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    borderRadius: 8,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginBottom: 16,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-  },
-  activeTabBtn: {
-    backgroundColor: '#1E2C4F',
-  },
-  tabBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94A3B8',
-  },
-  activeTabBtnText: {
-    color: '#00E676',
-  },
-  statsCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginBottom: 16,
-  },
-  cardSectionTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#64748B',
-    letterSpacing: 1,
-    marginBottom: 14,
-  },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6,
-  },
-  statBox: {
-    width: '33.33%',
-    paddingHorizontal: 6,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  statVal: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  statLbl: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  visualCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  visualSubText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: 14,
-  },
-  svgWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 10,
-  },
-  coverageNote: {
-    fontSize: 11,
-    color: '#64748B',
-    fontStyle: 'italic',
-    marginTop: 8,
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.canvas,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    backBtn: {
+      padding: 6,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    content: {
+      flex: 1,
+      padding: 16,
+    },
+    profileHeaderCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 16,
+    },
+    avatarBox: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1.5,
+      borderColor: theme.brand,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 14,
+    },
+    profileInfo: {
+      flex: 1,
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    playerName: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    playerRole: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    identityStatus: {
+      fontSize: 11,
+      color: theme.brand,
+      fontWeight: '600',
+      marginTop: 2,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      borderRadius: 8,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 16,
+    },
+    tabBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 6,
+    },
+    activeTabBtn: {
+      backgroundColor: theme.primarySubtle,
+    },
+    tabBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    activeTabBtnText: {
+      color: theme.brand,
+    },
+    statsCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 16,
+    },
+    cardSectionTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      letterSpacing: 0.8,
+      marginBottom: 14,
+    },
+    statGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: -6,
+    },
+    statBox: {
+      width: '33.33%',
+      paddingHorizontal: 6,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    statVal: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    statLbl: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    visualCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    visualSubText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      marginBottom: 14,
+    },
+    svgWrapper: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 10,
+    },
+    coverageNote: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      fontStyle: 'italic',
+      marginTop: 8,
+    },
+  });

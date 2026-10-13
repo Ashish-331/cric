@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Player, PlayingRole, BattingHand, BowlingStyle } from '../../types/cricket';
 import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme';
+import { ThemeColors } from '../../theme/tokens';
 
 export default function PlayerProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getPlayerById, updatePlayer, userProfile, teams } = useCricket();
+  const { theme, colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const player = getPlayerById(id as string);
 
@@ -73,11 +77,11 @@ export default function PlayerProfileScreen() {
     userProfile?.claimedPlayerId === player.id || userProfile?.name === player.name;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.canvas }]} contentContainerStyle={styles.content}>
       {/* 1. Profile Header Card */}
-      <View style={styles.headerCard}>
+      <View style={[styles.headerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.avatarRow}>
-          <View style={styles.avatar}>
+          <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
             <Text style={styles.avatarText}>
               {player.name
                 .split(' ')
@@ -89,24 +93,24 @@ export default function PlayerProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.nameRow}>
-              <Text style={styles.playerName}>{player.name}</Text>
+              <Text style={[styles.playerName, { color: colors.textPrimary }]}>{player.name}</Text>
               {player.isVerified && (
-                <Ionicons name="checkmark-circle" size={18} color={Colors.pitchGreen} style={{ marginLeft: 4 }} />
+                <Ionicons name="checkmark-circle" size={18} color={colors.brand} style={{ marginLeft: 4 }} />
               )}
             </View>
-            <Text style={styles.phoneText}>
+            <Text style={[styles.phoneText, { color: colors.textSecondary }]}>
               {player.phoneNumber || 'Mobile unverified (Guest Profile)'}
             </Text>
             {playerTeam && (
-              <View style={styles.teamBadge}>
+              <View style={[styles.teamBadge, { backgroundColor: colors.surfaceAlt }]}>
                 <View style={[styles.teamDot, { backgroundColor: playerTeam.primaryColor }]} />
-                <Text style={styles.teamBadgeText}>{playerTeam.name}</Text>
+                <Text style={[styles.teamBadgeText, { color: colors.textPrimary }]}>{playerTeam.name}</Text>
               </View>
             )}
           </View>
 
           <TouchableOpacity
-            style={styles.editIconBtn}
+            style={[styles.editIconBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
             onPress={() => {
               setNameInput(player.name);
               setPhoneInput(player.phoneNumber || '');
@@ -116,31 +120,31 @@ export default function PlayerProfileScreen() {
               setEditModalVisible(true);
             }}
           >
-            <Ionicons name="pencil" size={16} color={Colors.primary} />
+            <Ionicons name="pencil" size={16} color={colors.brand} />
           </TouchableOpacity>
         </View>
 
         {/* Roles & Styles chips */}
-        <View style={styles.stylesRow}>
-          <View style={styles.infoChip}>
-            <MaterialCommunityIcons name="cricket" size={14} color="#0284C7" />
-            <Text style={styles.infoChipText}>{(player.role || 'batter').toUpperCase()}</Text>
+        <View style={[styles.stylesRow, { borderTopColor: colors.border }]}>
+          <View style={[styles.infoChip, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="cricket" size={14} color={colors.brand} />
+            <Text style={[styles.infoChipText, { color: colors.textPrimary }]}>{(player.role || 'batter').toUpperCase()}</Text>
           </View>
-          <View style={styles.infoChip}>
-            <Ionicons name="hand-right-outline" size={14} color="#D97706" />
-            <Text style={styles.infoChipText}>{(player.battingHand || 'right').toUpperCase()} HAND BAT</Text>
+          <View style={[styles.infoChip, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+            <Ionicons name="hand-right-outline" size={14} color={colors.textSecondary} />
+            <Text style={[styles.infoChipText, { color: colors.textPrimary }]}>{(player.battingHand || 'right').toUpperCase()} HAND BAT</Text>
           </View>
           {player.bowlingStyle && (
-            <View style={styles.infoChip}>
-              <Ionicons name="baseball-outline" size={14} color="#059669" />
-              <Text style={styles.infoChipText}>{player.bowlingStyle.toUpperCase()}</Text>
+            <View style={[styles.infoChip, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+              <Ionicons name="baseball-outline" size={14} color={colors.brand} />
+              <Text style={[styles.infoChipText, { color: colors.textPrimary }]}>{player.bowlingStyle.toUpperCase()}</Text>
             </View>
           )}
         </View>
       </View>
 
       {/* 2. Recent Form Sparkline */}
-      <View style={styles.sectionCard}>
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="trending-up" size={18} color={Colors.primary} />
           <Text style={styles.sectionTitle}>Recent Form (Last 5 Innings)</Text>
@@ -381,308 +385,320 @@ export default function PlayerProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  notFoundText: {
-    color: '#64748B',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  backBtn: {
-    marginTop: 16,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  backBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-  headerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  playerName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  phoneText: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  teamBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    backgroundColor: '#F1F5F9',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 6,
-  },
-  teamDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  teamBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  editIconBtn: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#F0F9FF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  stylesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  infoChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 6,
-  },
-  infoChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  sparklineContainer: {
-    paddingVertical: 6,
-  },
-  scoresRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  scorePillContainer: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  scorePill: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-  },
-  scorePillFifty: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#10B981',
-  },
-  scorePillHundred: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-  },
-  scorePillText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1E293B',
-    fontVariant: ['tabular-nums'],
-  },
-  scorePillTextHigh: {
-    color: '#0F172A',
-  },
-  scorePillSub: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  emptyNote: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontStyle: 'italic',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  statBox: {
-    width: '48%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748B',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0F172A',
-    fontVariant: ['tabular-nums'],
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 14,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    marginTop: 10,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#0F172A',
-  },
-  optionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  optionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  optionBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  optionText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  optionTextActive: {
-    color: '#FFFFFF',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  saveBtn: {
-    flex: 2,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    centerContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: theme.canvas,
+    },
+    notFoundText: {
+      color: theme.textSecondary,
+      fontSize: 16,
+      fontWeight: '600',
+      marginTop: 12,
+    },
+    backBtn: {
+      marginTop: 16,
+      backgroundColor: theme.brand,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 8,
+    },
+    backBtnText: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+    },
+    headerCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    avatarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    avatar: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: theme.brand,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      color: '#FFFFFF',
+      fontSize: 20,
+      fontWeight: '800',
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    playerName: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.textPrimary,
+    },
+    phoneText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    teamBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 6,
+      backgroundColor: theme.surfaceAlt,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      gap: 6,
+    },
+    teamDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    teamBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    editIconBtn: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.border,
+      minHeight: 44,
+      minWidth: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stylesRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    infoChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      gap: 6,
+    },
+    infoChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    sectionCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 12,
+    },
+    sectionTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: theme.textPrimary,
+    },
+    sparklineContainer: {
+      paddingVertical: 6,
+    },
+    scoresRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    scorePillContainer: {
+      alignItems: 'center',
+      gap: 4,
+    },
+    scorePill: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: theme.border,
+    },
+    scorePillFifty: {
+      backgroundColor: theme.primarySubtle,
+      borderColor: theme.brand,
+    },
+    scorePillHundred: {
+      backgroundColor: theme.primarySubtle,
+      borderColor: theme.brand,
+    },
+    scorePillText: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    scorePillTextHigh: {
+      color: theme.brand,
+    },
+    scorePillSub: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: theme.textSecondary,
+    },
+    emptyNote: {
+      color: theme.textSecondary,
+      fontSize: 13,
+      fontStyle: 'italic',
+    },
+    statsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    statBox: {
+      width: '48%',
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 10,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    statLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      marginBottom: 4,
+    },
+    statValue: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      padding: 20,
+    },
+    modalCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.textPrimary,
+      marginBottom: 14,
+    },
+    inputLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      marginTop: 10,
+      marginBottom: 6,
+      textTransform: 'uppercase',
+    },
+    input: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: theme.textPrimary,
+    },
+    optionsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    optionBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    optionBtnActive: {
+      backgroundColor: theme.brand,
+      borderColor: theme.brand,
+    },
+    optionText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    optionTextActive: {
+      color: '#FFFFFF',
+    },
+    modalActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 20,
+    },
+    cancelBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 8,
+      backgroundColor: theme.surfaceAlt,
+      alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    cancelBtnText: {
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    saveBtn: {
+      flex: 2,
+      paddingVertical: 12,
+      borderRadius: 8,
+      backgroundColor: theme.brand,
+      alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    saveBtnText: {
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+  });

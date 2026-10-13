@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
+import { useTheme } from '../../theme/useTheme';
+import { ThemeColors } from '../../theme/tokens';
 import { Badge } from '../../components/common/Badge';
 import { supabase } from '../../services/supabaseClient';
 import { toCanonicalUUID } from '../../utils/uuid';
@@ -19,6 +21,8 @@ import { StorageService } from '../../storage/storageService';
 import { Match } from '../../types/cricket';
 
 export default function GoLiveScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { matches, userProfile, teams, tournaments } = useCricket();
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [broadcastActive, setBroadcastActive] = useState<boolean>(false);
@@ -137,7 +141,7 @@ export default function GoLiveScreen() {
       {/* Header */}
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Go Live & Broadcast</Text>
         <View style={{ width: 40 }} />
@@ -147,7 +151,7 @@ export default function GoLiveScreen() {
         {/* Broadcast Status Card */}
         <View style={styles.broadcastStatusCard}>
           <View style={styles.statusHeaderRow}>
-            <View style={[styles.pulseDot, { backgroundColor: broadcastActive ? '#00E676' : '#94A3B8' }]} />
+            <View style={[styles.pulseDot, { backgroundColor: broadcastActive ? theme.primary : theme.textMuted }]} />
             <Text style={styles.statusHeaderText}>
               {broadcastActive ? 'BROADCASTING LIVE SCORE' : 'READY TO BROADCAST'}
             </Text>
@@ -169,12 +173,12 @@ export default function GoLiveScreen() {
           {broadcastActive && (
             <View style={styles.activeStatsRow}>
               <View style={styles.activeStat}>
-                <Ionicons name="people" size={16} color="#00E5FF" />
+                <Ionicons name="people" size={16} color={theme.primary} />
                 <Text style={styles.activeStatText}>Public Spectator Access Enabled</Text>
               </View>
               <View style={[styles.activeStat, { marginTop: 6 }]}>
-                <Ionicons name="sync" size={16} color="#00E676" />
-                <Text style={styles.activeStatText}>Zero-latency scorebook sync</Text>
+                <Ionicons name="sync" size={16} color={theme.primary} />
+                <Text style={styles.activeStatText}>Live ball-by-ball score updates</Text>
               </View>
             </View>
           )}
@@ -185,7 +189,7 @@ export default function GoLiveScreen() {
                 style={styles.startBroadcastBtn}
                 onPress={handleStartScoreBroadcast}
               >
-                <Ionicons name="radio" size={18} color="#070D1E" />
+                <Ionicons name="radio" size={18} color={theme.surface} />
                 <Text style={styles.startBroadcastBtnText}>Start Live Score Sharing</Text>
               </TouchableOpacity>
             ) : (
@@ -194,7 +198,7 @@ export default function GoLiveScreen() {
                   style={styles.shareStreamBtn}
                   onPress={handleSharePublicStream}
                 >
-                  <Ionicons name="share-social" size={16} color="#FFF" />
+                  <Ionicons name="share-social" size={16} color={theme.surface} />
                   <Text style={styles.shareStreamBtnText}>Share Match Link</Text>
                 </TouchableOpacity>
 
@@ -212,7 +216,7 @@ export default function GoLiveScreen() {
         {/* Video Transport Disclosure Box (Gated & Truthful) */}
         <View style={styles.videoGatedCard}>
           <View style={styles.videoHeaderRow}>
-            <Ionicons name="videocam-outline" size={20} color="#FFB300" />
+            <Ionicons name="videocam-outline" size={20} color={theme.warning} />
             <Text style={styles.videoHeaderTitle}>Video Live Streaming Status</Text>
             <View style={{ flex: 1 }} />
             <View style={styles.blockedBadge}>
@@ -225,7 +229,7 @@ export default function GoLiveScreen() {
           </Text>
 
           <View style={styles.budgetPolicyBox}>
-            <Ionicons name="shield-outline" size={16} color="#00E676" />
+            <Ionicons name="shield-outline" size={16} color={theme.primary} />
             <Text style={styles.budgetPolicyText}>
               Zero-fee guarantee: Cric never enables paid third-party streaming resources without explicit administrative provider and egress cost approval. Free live score broadcasting remains 100% active.
             </Text>
@@ -276,245 +280,255 @@ export default function GoLiveScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  broadcastStatusCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginBottom: 16,
-  },
-  statusHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  pulseDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  statusHeaderText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#94A3B8',
-    letterSpacing: 1,
-  },
-  statusMatchTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginTop: 4,
-  },
-  statusMatchVenue: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  activeStatsRow: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#121C38',
-  },
-  activeStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  activeStatText: {
-    fontSize: 12,
-    color: '#E2E8F0',
-    marginLeft: 8,
-    fontWeight: '600',
-  },
-  actionRow: {
-    marginTop: 16,
-  },
-  startBroadcastBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00E676',
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  startBroadcastBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#070D1E',
-    marginLeft: 6,
-  },
-  broadcastControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  shareStreamBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0284C7',
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  shareStreamBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFF',
-    marginLeft: 6,
-  },
-  stopBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#1E2C4F',
-  },
-  stopBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FF1744',
-  },
-  videoGatedCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginBottom: 16,
-  },
-  videoHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  videoHeaderTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginLeft: 6,
-  },
-  blockedBadge: {
-    backgroundColor: '#3F1219',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#7F1D1D',
-  },
-  blockedBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#F87171',
-  },
-  videoExplanationText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  budgetPolicyBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#070D1E',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#121C38',
-  },
-  budgetPolicyText: {
-    fontSize: 11,
-    color: '#E2E8F0',
-    marginLeft: 8,
-    flex: 1,
-    lineHeight: 16,
-  },
-  matchSelectSection: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#64748B',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  matchOptionCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  selectedMatchOption: {
-    borderColor: '#00E676',
-    backgroundColor: '#071520',
-  },
-  optionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  optionTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  optionMeta: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  emptyBox: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#94A3B8',
-  },
-  createMatchBtn: {
-    marginTop: 10,
-    backgroundColor: '#0284C7',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  createMatchBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    backBtn: {
+      padding: 6,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.text,
+      letterSpacing: 0.3,
+    },
+    content: {
+      flex: 1,
+      padding: 16,
+    },
+    broadcastStatusCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 16,
+    },
+    statusHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    pulseDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginRight: 8,
+    },
+    statusHeaderText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: theme.textSecondary,
+      letterSpacing: 0.5,
+    },
+    statusMatchTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: theme.text,
+      marginTop: 4,
+    },
+    statusMatchVenue: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    activeStatsRow: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    activeStat: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    activeStatText: {
+      fontSize: 12,
+      color: theme.text,
+      marginLeft: 8,
+      fontWeight: '600',
+    },
+    actionRow: {
+      marginTop: 16,
+    },
+    startBroadcastBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.primary,
+      paddingVertical: 12,
+      borderRadius: 8,
+      minHeight: 48,
+    },
+    startBroadcastBtnText: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: theme.surface,
+      marginLeft: 6,
+    },
+    broadcastControlRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    shareStreamBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.primary,
+      paddingVertical: 12,
+      borderRadius: 8,
+      marginRight: 8,
+      minHeight: 44,
+    },
+    shareStreamBtnText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: theme.surface,
+      marginLeft: 6,
+    },
+    stopBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 8,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.danger,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    stopBtnText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.danger,
+    },
+    videoGatedCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 16,
+    },
+    videoHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    videoHeaderTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: theme.text,
+      marginLeft: 6,
+    },
+    blockedBadge: {
+      backgroundColor: theme.surfaceAlt,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.warning,
+    },
+    blockedBadgeText: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: theme.warning,
+    },
+    videoExplanationText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginTop: 4,
+    },
+    budgetPolicyBox: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: theme.surfaceAlt,
+      padding: 10,
+      borderRadius: 8,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    budgetPolicyText: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      marginLeft: 8,
+      flex: 1,
+      lineHeight: 16,
+    },
+    matchSelectSection: {
+      marginTop: 8,
+    },
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: theme.textSecondary,
+      letterSpacing: 0.5,
+      marginBottom: 10,
+      textTransform: 'uppercase',
+    },
+    matchOptionCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    selectedMatchOption: {
+      borderColor: theme.primary,
+      backgroundColor: theme.primarySubtle,
+    },
+    optionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    optionTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.text,
+    },
+    optionMeta: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 4,
+    },
+    emptyBox: {
+      padding: 24,
+      alignItems: 'center',
+    },
+    emptyText: {
+      fontSize: 13,
+      color: theme.textSecondary,
+    },
+    createMatchBtn: {
+      marginTop: 10,
+      backgroundColor: theme.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 6,
+      minHeight: 40,
+      justifyContent: 'center',
+    },
+    createMatchBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.surface,
+    },
+  });

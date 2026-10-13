@@ -1,19 +1,40 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme/useTheme';
 
-interface CardProps {
+export interface CardProps {
   children: React.ReactNode;
   style?: ViewStyle;
-  variant?: 'light' | 'dark';
+  variant?: 'default' | 'raised' | 'outlined' | 'light' | 'dark';
 }
 
-export const Card: React.FC<CardProps> = ({ children, style, variant = 'light' }) => {
+export const Card: React.FC<CardProps> = ({ children, style, variant = 'default' }) => {
+  const { theme } = useTheme();
+
+  let bg = theme.surface;
+  let borderColor = theme.border;
+
+  if (variant === 'raised') {
+    bg = theme.raised;
+    borderColor = theme.border;
+  } else if (variant === 'dark') {
+    // Legacy support
+    bg = theme.surface;
+    borderColor = theme.border;
+  } else if (variant === 'light') {
+    // Legacy support
+    bg = theme.surface;
+    borderColor = theme.border;
+  }
+
   return (
     <View
       style={[
         styles.card,
-        variant === 'dark' ? styles.darkCard : styles.lightCard,
+        {
+          backgroundColor: bg,
+          borderColor,
+        },
         style,
       ]}
     >
@@ -24,23 +45,9 @@ export const Card: React.FC<CardProps> = ({ children, style, variant = 'light' }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 14,
-    padding: 16,
-    marginVertical: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  lightCard: {
-    backgroundColor: Colors.cardBackground,
+    borderRadius: 10,
+    padding: 14,
+    marginVertical: 4,
     borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  darkCard: {
-    backgroundColor: Colors.darkCard,
-    borderWidth: 1,
-    borderColor: '#1E293B',
   },
 });

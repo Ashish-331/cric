@@ -1,50 +1,65 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { Colors } from '../../utils/colors';
+import { useTheme } from '../../theme/useTheme';
 
-interface BadgeProps {
+export interface BadgeProps {
   label: string;
-  variant?: 'live' | 'break' | 'completed' | 'synced' | 'local' | 'outline' | 'custom';
+  variant?: 'live' | 'break' | 'completed' | 'synced' | 'local' | 'outline' | 'neutral' | 'custom';
   color?: string;
   backgroundColor?: string;
   size?: 'sm' | 'md' | 'lg';
   style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
   label,
-  variant = 'custom',
+  variant = 'neutral',
   color,
   backgroundColor,
   size = 'md',
   style,
+  textStyle,
 }) => {
-  let bg = backgroundColor || Colors.pitchGreen;
-  let textCol = color || Colors.textLight;
+  const { theme } = useTheme();
+
+  let bg = backgroundColor || theme.raised;
+  let textCol = color || theme.textSecondary;
+  let borderColor = 'transparent';
+  let borderWidth = 0;
 
   if (variant === 'live') {
-    bg = Colors.statusLive;
-    textCol = '#FFFFFF';
+    bg = theme.statusLiveBg;
+    textCol = theme.statusLive;
+    borderColor = theme.statusLive;
+    borderWidth = 1;
   } else if (variant === 'break') {
-    bg = Colors.statusBreak;
-    textCol = '#FFFFFF';
+    bg = theme.statusBreakBg;
+    textCol = theme.statusBreak;
+    borderColor = theme.statusBreak;
+    borderWidth = 1;
   } else if (variant === 'completed') {
-    bg = Colors.statusCompleted;
-    textCol = '#FFFFFF';
+    bg = theme.statusCompletedBg;
+    textCol = theme.statusCompleted;
   } else if (variant === 'synced') {
-    bg = '#E0F2FE';
-    textCol = '#0369A1';
+    bg = theme.statusSyncedBg;
+    textCol = theme.statusSynced;
   } else if (variant === 'local') {
-    bg = '#F1F5F9';
-    textCol = '#475569';
+    bg = theme.statusLocalBg;
+    textCol = theme.statusLocal;
+  } else if (variant === 'neutral') {
+    bg = theme.raised;
+    textCol = theme.textSecondary;
   } else if (variant === 'outline') {
     bg = 'transparent';
-    textCol = color || Colors.textSecondary;
+    textCol = color || theme.textSecondary;
+    borderColor = theme.border;
+    borderWidth = 1;
   }
 
-  const paddingHorizontal = size === 'sm' ? 6 : size === 'lg' ? 12 : 8;
+  const paddingHorizontal = size === 'sm' ? 6 : size === 'lg' ? 10 : 8;
   const paddingVertical = size === 'sm' ? 2 : size === 'lg' ? 4 : 3;
-  const fontSize = size === 'sm' ? 10 : size === 'lg' ? 13 : 11;
+  const fontSize = size === 'sm' ? 10 : size === 'lg' ? 12 : 11;
 
   return (
     <View
@@ -54,27 +69,28 @@ export const Badge: React.FC<BadgeProps> = ({
           backgroundColor: bg,
           paddingHorizontal,
           paddingVertical,
-          borderWidth: variant === 'outline' ? 1 : 0,
-          borderColor: variant === 'outline' ? textCol : 'transparent',
+          borderWidth,
+          borderColor,
         },
         style,
       ]}
     >
-      <Text style={[styles.text, { color: textCol, fontSize }]}>{label}</Text>
+      <Text style={[styles.text, { color: textCol, fontSize }, textStyle]}>
+        {label}
+      </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 12,
+    borderRadius: 6,
     alignSelf: 'flex-start',
     justifyContent: 'center',
     alignItems: 'center',
   },
   text: {
     fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
 });

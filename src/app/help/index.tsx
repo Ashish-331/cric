@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../theme';
+import { ThemeColors } from '../../theme/tokens';
 
 interface FAQItem {
   question: string;
@@ -31,7 +33,7 @@ const FAQS: FAQItem[] = [
   },
   {
     question: 'How do I claim my player profile?',
-    answer: 'Captains can add players by name and phone. When you sign in with that mobile number, tap "Claim Profile" in Settings to link your canonical match records.',
+    answer: 'Captains can add players by name and verified contact details. When you sign in, confirm your registered email address to claim your canonical match records and career statistics.',
   },
   {
     question: 'How do I correct an incorrect score?',
@@ -40,6 +42,8 @@ const FAQS: FAQItem[] = [
 ];
 
 export default function HelpScreen() {
+  const { theme, colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [reportText, setReportText] = useState('');
   const [reportType, setReportType] = useState<'score' | 'profile' | 'bug'>('score');
@@ -60,7 +64,7 @@ export default function HelpScreen() {
     <View style={styles.container}>
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Help & Support</Text>
         <View style={{ width: 40 }} />
@@ -82,7 +86,7 @@ export default function HelpScreen() {
               <Ionicons
                 name={expandedFaq === idx ? 'chevron-up' : 'chevron-down'}
                 size={18}
-                color="#00E676"
+                color={theme.brand}
               />
             </View>
             {expandedFaq === idx && (
@@ -117,7 +121,7 @@ export default function HelpScreen() {
             multiline
             numberOfLines={4}
             placeholder="Describe the match, over, or profile detail to review..."
-            placeholderTextColor="#64748B"
+            placeholderTextColor={theme.textTertiary}
             value={reportText}
             onChangeText={setReportText}
           />
@@ -131,129 +135,133 @@ export default function HelpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#64748B',
-    letterSpacing: 1,
-    marginBottom: 10,
-    marginTop: 8,
-  },
-  faqCard: {
-    backgroundColor: '#0C142B',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  faqQuestion: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    flex: 1,
-    marginRight: 8,
-  },
-  faqAnswer: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 10,
-    lineHeight: 18,
-  },
-  reportSection: {
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  reportSub: {
-    fontSize: 12,
-    color: '#94A3B8',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  typeRow: {
-    flexDirection: 'row',
-    backgroundColor: '#070D1E',
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 12,
-  },
-  typeBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-  },
-  activeTypeBtn: {
-    backgroundColor: '#1E2C4F',
-  },
-  typeBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  activeTypeBtnText: {
-    color: '#00E676',
-  },
-  textInput: {
-    backgroundColor: '#070D1E',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    padding: 12,
-    color: '#FFF',
-    fontSize: 13,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    marginBottom: 12,
-  },
-  submitReportBtn: {
-    backgroundColor: '#00E676',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  submitReportBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#070D1E',
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.canvas,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    backBtn: {
+      padding: 6,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    content: {
+      flex: 1,
+      padding: 16,
+    },
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+      letterSpacing: 0.8,
+      marginBottom: 10,
+      marginTop: 8,
+    },
+    faqCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      padding: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    faqHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    faqQuestion: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      flex: 1,
+      marginRight: 8,
+    },
+    faqAnswer: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 10,
+      lineHeight: 18,
+    },
+    reportSection: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginTop: 16,
+      marginBottom: 32,
+    },
+    reportSub: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    typeRow: {
+      flexDirection: 'row',
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      padding: 4,
+      marginBottom: 12,
+    },
+    typeBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 6,
+    },
+    activeTypeBtn: {
+      backgroundColor: theme.primarySubtle,
+    },
+    typeBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    activeTypeBtnText: {
+      color: theme.brand,
+    },
+    textInput: {
+      backgroundColor: theme.surfaceAlt,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 12,
+      color: theme.textPrimary,
+      fontSize: 13,
+      minHeight: 80,
+      textAlignVertical: 'top',
+      marginBottom: 12,
+    },
+    submitReportBtn: {
+      backgroundColor: theme.brand,
+      paddingVertical: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    submitReportBtnText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+  });

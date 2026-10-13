@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Badge } from '../../components/common/Badge';
+import { useTheme } from '../../theme';
+import { ThemeColors } from '../../theme/tokens';
 
 interface AwardItem {
   id: string;
@@ -25,6 +27,8 @@ interface AwardItem {
 }
 
 export default function AwardsScreen() {
+  const { theme, colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { matches, tournaments, teams } = useCricket();
   const [filter, setFilter] = useState<'all' | 'milestones' | 'potm' | 'mvp'>('all');
 
@@ -138,7 +142,7 @@ export default function AwardsScreen() {
     <View style={styles.container}>
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Awards & Honours</Text>
         <View style={{ width: 40 }} />
@@ -168,8 +172,8 @@ export default function AwardsScreen() {
             <View style={styles.awardIconBox}>
               <Ionicons
                 name={item.category === 'potm' ? 'trophy' : 'medal'}
-                size={24}
-                color={item.category === 'potm' ? '#FFD700' : '#00E676'}
+                size={22}
+                color={item.category === 'potm' ? '#D97706' : theme.brand}
               />
             </View>
 
@@ -197,7 +201,7 @@ export default function AwardsScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
-            <Ionicons name="medal-outline" size={48} color="#475569" />
+            <Ionicons name="medal-outline" size={48} color={theme.textTertiary} />
             <Text style={styles.emptyTitle}>No Awards Yet</Text>
             <Text style={styles.emptySubtitle}>
               Complete official matches and hit scoring milestones to unlock community awards.
@@ -209,135 +213,137 @@ export default function AwardsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#070D1E',
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#070D1E',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E2C4F',
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: '#1E2C4F',
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94A3B8',
-  },
-  filterTextActive: {
-    color: '#00E676',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  awardCard: {
-    flexDirection: 'row',
-    backgroundColor: '#0C142B',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-  },
-  awardIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#070D1E',
-    borderWidth: 1,
-    borderColor: '#1E2C4F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  awardInfoBox: {
-    flex: 1,
-  },
-  awardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  awardNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFB300',
-  },
-  recipientNameText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginTop: 2,
-  },
-  matchTitleText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  basisText: {
-    fontSize: 12,
-    color: '#E2E8F0',
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  auditRow: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#121C38',
-  },
-  auditText: {
-    fontSize: 10,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  emptyBox: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFF',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-});
+const createStyles = (theme: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.canvas,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    backBtn: {
+      padding: 6,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    filterRow: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      padding: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    filterChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+      marginRight: 8,
+    },
+    filterChipActive: {
+      backgroundColor: theme.primarySubtle,
+    },
+    filterText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.textSecondary,
+    },
+    filterTextActive: {
+      color: theme.brand,
+    },
+    listContent: {
+      padding: 16,
+      paddingBottom: 32,
+    },
+    awardCard: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    awardIconBox: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    awardInfoBox: {
+      flex: 1,
+    },
+    awardHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    awardNameText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: theme.brand,
+    },
+    recipientNameText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      marginTop: 2,
+    },
+    matchTitleText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 2,
+    },
+    basisText: {
+      fontSize: 12,
+      color: theme.textPrimary,
+      marginTop: 4,
+      fontWeight: '600',
+    },
+    auditRow: {
+      marginTop: 6,
+      paddingTop: 6,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.border,
+    },
+    auditText: {
+      fontSize: 10,
+      color: theme.textSecondary,
+      fontWeight: '600',
+    },
+    emptyBox: {
+      padding: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      marginTop: 12,
+    },
+    emptySubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      marginTop: 6,
+    },
+  });

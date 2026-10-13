@@ -116,7 +116,7 @@ export default function LoginScreen() {
       );
     } catch (err: any) {
       CricketHaptics.wicket();
-      Alert.alert('Sign In Failed', err.message || 'Invalid email or password.');
+      Alert.alert('Sign In Failed', AuthService.formatAuthError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -133,7 +133,7 @@ export default function LoginScreen() {
       const res = await AuthService.sendPasswordResetEmail(email.trim());
       Alert.alert('Password Reset', res.message);
     } catch (err: any) {
-      Alert.alert('Reset Error', err.message || 'Could not send reset email.');
+      Alert.alert('Reset Error', AuthService.formatAuthError(err));
     }
   };
 
@@ -185,7 +185,7 @@ export default function LoginScreen() {
       }
     } catch (err: any) {
       CricketHaptics.wicket();
-      Alert.alert('Registration Notice', err.message || 'Failed to create account.');
+      Alert.alert('Registration Notice', AuthService.formatAuthError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -229,7 +229,7 @@ export default function LoginScreen() {
       );
     } catch (err: any) {
       CricketHaptics.wicket();
-      Alert.alert('Verification Failed', err.message || 'The entered OTP code could not be verified.');
+      Alert.alert('Verification Failed', AuthService.formatAuthError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -281,7 +281,7 @@ export default function LoginScreen() {
       CricketHaptics.wicket();
       Alert.alert(
         'Dev Account Sign-In Failed',
-        err.message || 'Unable to authenticate dev account against Supabase Auth. Please ensure the Supabase service is reachable or register a new account.'
+        AuthService.formatAuthError(err)
       );
     } finally {
       setIsSubmitting(false);

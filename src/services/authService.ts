@@ -60,6 +60,30 @@ export const DEV_TEST_ACCOUNTS = {
 
 export class AuthService {
   /**
+   * Translates network connection failures and raw fetch errors into clear actionable guidance.
+   */
+  static formatAuthError(err: any): string {
+    const raw = err?.message || String(err || '');
+    const backendUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321';
+
+    if (
+      raw.includes('127.0.0.1') ||
+      raw.includes('Network request failed') ||
+      raw.includes('Failed to fetch') ||
+      raw.includes('ECONNREFUSED') ||
+      raw.includes('fetch failed') ||
+      raw.includes('NetworkError')
+    ) {
+      return (
+        `Cannot connect to Supabase backend (${backendUrl}).\n\n` +
+        `• Cloud Accounts: Add your hosted Supabase URL and anon key to .env.local (see .env.example).\n` +
+        `• Offline Scoring: Tap "Continue as Guest Scorer" to score matches locally with 100% functionality.`
+      );
+    }
+    return raw;
+  }
+
+  /**
    * Validates and normalizes email address.
    */
   static normalizeEmail(email?: string): string {

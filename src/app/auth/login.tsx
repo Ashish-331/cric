@@ -38,7 +38,7 @@ const COUNTRY_CODES: CountryCode[] = [
 ];
 
 export default function LoginScreen() {
-  const { updateUserProfile, userProfile, claimGhostProfile } = useCricket();
+  const { updateUserProfile, userProfile } = useCricket();
 
   // Mode: Sign In vs Sign Up
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -106,10 +106,7 @@ export default function LoginScreen() {
         isVerified: true,
       });
 
-      // Claim any historical records if optional phone exists
-      if (authResult.profile.phoneNumber) {
-        await claimGhostProfile(authResult.profile.phoneNumber);
-      }
+      // Canonical authenticated account profile loaded
 
       CricketHaptics.milestone();
       Alert.alert(
@@ -181,10 +178,6 @@ export default function LoginScreen() {
           isVerified: true,
         });
 
-        if (fullOptionalPhone) {
-          await claimGhostProfile(fullOptionalPhone);
-        }
-
         CricketHaptics.milestone();
         Alert.alert('Account Verified! 🏏', 'Welcome to Cric! Your profile is ready.', [
           { text: 'Open Arena', onPress: () => router.replace('/(tabs)') },
@@ -229,10 +222,6 @@ export default function LoginScreen() {
         isVerified: true,
       });
 
-      if (fullOptionalPhone) {
-        await claimGhostProfile(fullOptionalPhone);
-      }
-
       Alert.alert(
         'Email Confirmed & Registered! 🏏',
         `Welcome to the Cricket Platform! Your account ${authResult.profile.email} is authenticated and linked.`,
@@ -263,11 +252,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleAutofillDemoOtp = () => {
-    CricketHaptics.milestone();
-    setOtpDigits(['1', '2', '3', '4', '5', '6']);
-  };
-
   // 1-Tap Quick Dev Account Login (No SMS carrier cost)
   const handleSelectDevAccount = async (accountKey: keyof typeof DEV_TEST_ACCOUNTS) => {
     const creds = DEV_TEST_ACCOUNTS[accountKey];
@@ -294,21 +278,10 @@ export default function LoginScreen() {
         [{ text: 'Open Arena', onPress: () => router.replace('/(tabs)') }]
       );
     } catch (err: any) {
-      // In offline / local test sandbox where Supabase auth container isn't running
-      CricketHaptics.milestone();
-      await updateUserProfile({
-        id: `dev_${accountKey.toLowerCase()}`,
-        email: creds.email,
-        phoneNumber: creds.phone,
-        name: creds.displayName,
-        isGuest: false,
-        isVerified: true,
-        role: accountKey.toLowerCase() as any,
-      });
+      CricketHaptics.wicket();
       Alert.alert(
-        `Test Session Activated: ${creds.role} 🏏`,
-        `Logged in as ${creds.displayName} (${creds.email}). Test identity is loaded.`,
-        [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]
+        'Dev Account Sign-In Failed',
+        err.message || 'Unable to authenticate dev account against Supabase Auth. Please ensure the Supabase service is reachable or register a new account.'
       );
     } finally {
       setIsSubmitting(false);
@@ -604,12 +577,6 @@ export default function LoginScreen() {
                   />
                 ))}
               </View>
-
-              {/* Demo Helper Button */}
-              <TouchableOpacity style={styles.demoCodeBtn} onPress={handleAutofillDemoOtp}>
-                <Ionicons name="flash-outline" size={14} color="#FFB300" />
-                <Text style={styles.demoCodeText}>Auto-fill Demo Code (123456)</Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.primaryBtn, isSubmitting && styles.btnDisabled]}
@@ -962,23 +929,6 @@ const styles = StyleSheet.create({
   otpBoxFilled: {
     borderColor: '#00E676',
     backgroundColor: 'rgba(0, 230, 118, 0.08)',
-  },
-  demoCodeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#121C38',
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#FFB300',
-  },
-  demoCodeText: {
-    color: '#FFB300',
-    fontSize: 12,
-    fontWeight: '800',
   },
   resendRow: {
     alignItems: 'center',

@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Colors } from '../../utils/colors';
+import { AuthService } from '../../services/authService';
 
 interface NavigationDrawerModalProps {
   visible: boolean;
@@ -24,7 +25,7 @@ export const NavigationDrawerModal: React.FC<NavigationDrawerModalProps> = ({
   visible,
   onClose,
 }) => {
-  const { userProfile, switchUser, presetUsers } = useCricket();
+  const { userProfile, updateUserProfile } = useCricket();
 
   const maskPhone = (phone?: string) => {
     if (!phone) return 'Guest Session';
@@ -91,7 +92,7 @@ export const NavigationDrawerModal: React.FC<NavigationDrawerModalProps> = ({
                     <Ionicons name="checkmark-circle" size={16} color="#00E676" style={{ marginLeft: 4 }} />
                   ) : null}
                 </View>
-                <Text style={styles.userPhone}>{maskPhone(userProfile?.phoneNumber)}</Text>
+                <Text style={styles.userPhone}>{userProfile?.email || maskPhone(userProfile?.phoneNumber)}</Text>
                 <View style={styles.roleBadge}>
                   <Text style={styles.roleText}>
                     {userProfile?.role ? userProfile.role.toUpperCase() : 'PLAYER'}
@@ -254,30 +255,63 @@ export const NavigationDrawerModal: React.FC<NavigationDrawerModalProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Quick Account Switcher for multi-device pairing testing */}
+            {/* Account & Session Controls */}
             <View style={[styles.section, { borderBottomWidth: 0, paddingBottom: 24 }]}>
-              <Text style={styles.sectionHeader}>SWITCH TEST ROLE</Text>
-              {presetUsers.map((preset) => (
+              <Text style={styles.sectionHeader}>ACCOUNT & SESSION</Text>
+              {!userProfile?.isGuest && userProfile?.isVerified ? (
                 <TouchableOpacity
-                  key={preset.id}
-                  style={[
-                    styles.userSwitchRow,
-                    userProfile?.id === preset.id && styles.activeUserRow,
-                  ]}
-                  onPress={() => {
-                    switchUser(preset);
+                  style={styles.menuItem}
+                  onPress={async () => {
                     onClose();
+                    Alert.alert(
+                      'Sign Out',
+                      'Are you sure you want to sign out of your account?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Sign Out',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await AuthService.signOut();
+                            } catch (e: any) {
+                              console.warn('Sign out warning:', e.message);
+                            }
+                            await updateUserProfile({
+                              id: `guest_${Date.now()}`,
+                              name: 'Guest Scorer',
+                              email: undefined,
+                              phoneNumber: undefined,
+                              isGuest: true,
+                              isVerified: false,
+                              role: 'scorer',
+                            });
+                            router.replace('/auth/login');
+                          },
+                        },
+                      ]
+                    );
                   }}
                 >
-                  <View style={styles.switchUserInfo}>
-                    <Text style={styles.switchUserName}>{preset.name}</Text>
-                    <Text style={styles.switchUserRole}>{preset.role.toUpperCase()}</Text>
+                  <View style={[styles.iconCircle, { backgroundColor: '#EF4444' }]}>
+                    <Ionicons name="log-out-outline" size={18} color="#FFF" />
                   </View>
-                  {userProfile?.id === preset.id && (
-                    <Ionicons name="checkmark" size={18} color="#00E676" />
-                  )}
+                  <Text style={[styles.menuText, { color: '#EF4444' }]}>Sign Out</Text>
                 </TouchableOpacity>
-              ))}
+              ) : (
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    onClose();
+                    router.push('/auth/login');
+                  }}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: Colors.primary }]}>
+                    <Ionicons name="log-in-outline" size={18} color="#FFF" />
+                  </View>
+                  <Text style={styles.menuText}>Sign In / Register</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </ScrollView>
         </View>
@@ -396,30 +430,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#94A3B8',
     marginTop: 1,
-  },
-  userSwitchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  activeUserRow: {
-    backgroundColor: '#0C142B',
-  },
-  switchUserInfo: {
-    flex: 1,
-  },
-  switchUserName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  switchUserRole: {
-    fontSize: 10,
-    color: '#64748B',
-    fontWeight: '600',
   },
 });

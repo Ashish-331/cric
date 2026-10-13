@@ -18,17 +18,12 @@ import { AuthService } from '../../services/authService';
 export default function SettingsScreen() {
   const {
     userProfile,
-    presetUsers,
-    switchUser,
     updateUserProfile,
     matches,
     importMatch,
     getPlayerById,
   } = useCricket();
 
-  const [phoneInput, setPhoneInput] = useState(userProfile?.phoneNumber || '');
-  const [otpInput, setOtpInput] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [showImportBox, setShowImportBox] = useState(false);
 
@@ -36,46 +31,35 @@ export default function SettingsScreen() {
     ? getPlayerById(userProfile.claimedPlayerId)
     : undefined;
 
-  const handleSendOtp = async () => {
-    const normalized = AuthService.normalizePhoneNumber(phoneInput);
-    if (!normalized || normalized.length < 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid mobile number with country code (e.g. +91 9876543210).');
-      return;
-    }
-    try {
-      const res = await AuthService.requestOtp(normalized);
-      setOtpSent(true);
-      Alert.alert('OTP Sent', res.message || `Verification code sent to ${normalized}`);
-    } catch (err: any) {
-      Alert.alert('OTP Request Failed', err.message);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    const normalized = AuthService.normalizePhoneNumber(phoneInput);
-    try {
-      await AuthService.verifyOtp(normalized, otpInput.trim());
-      await updateUserProfile({
-        phoneNumber: normalized,
-        isGuest: false,
-        isVerified: true,
-      });
-      setOtpSent(false);
-      setOtpInput('');
-      Alert.alert('Verified!', 'Your mobile account is now authenticated with an active session.');
-    } catch (err: any) {
-      Alert.alert('Verification Failed', err.message);
-    }
-  };
-
-  const handleSwitchAccount = async (targetUser: UserProfile) => {
-    await switchUser(targetUser);
-    setPhoneInput(targetUser.phoneNumber || '');
-    setOtpSent(false);
-    setOtpInput('');
+  const handleSignOut = () => {
     Alert.alert(
-      'Account Switched!',
-      `Now logged in as ${targetUser.name} (${targetUser.role.toUpperCase()}). You can now test features from this perspective!`
+      'Sign Out Account',
+      'Are you sure you want to sign out? You will return to offline guest scoring.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AuthService.signOut();
+            } catch (err: any) {
+              console.warn('Sign out notice:', err.message);
+            }
+            await updateUserProfile({
+              id: `guest_${Date.now()}`,
+              name: 'Guest Scorer',
+              email: undefined,
+              phoneNumber: undefined,
+              isGuest: true,
+              isVerified: false,
+              role: 'scorer',
+            });
+            Alert.alert('Signed Out', 'You have been signed out.');
+            router.replace('/auth/login');
+          },
+        },
+      ]
     );
   };
 
@@ -96,153 +80,78 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Current Active Profile Card */}
+      {/* 1. Unified Account & Security Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Ionicons name="person-circle" size={24} color={Colors.primary} />
-          <Text style={styles.cardTitle}>Active Account & Identity</Text>
+          <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+          <Text style={styles.cardTitle}>Account & Security</Text>
         </View>
 
-        <View style={styles.profileBox}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(userProfile?.name || 'User')
-                .split(' ')
-                .map((n) => n[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase()}
-            </Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.profileName}>{userProfile?.name}</Text>
-              {userProfile?.isVerified && (
-                <Ionicons name="checkmark-circle" size={18} color={Colors.pitchGreen} style={{ marginLeft: 4 }} />
-              )}
-            </View>
-            <Text style={styles.profileRole}>
-              Role: <Text style={styles.roleHighlight}>{(userProfile?.role || 'player').toUpperCase()}</Text>
-              {userProfile?.teamId ? ` • Squad Member` : ''}
-            </Text>
-            <Text style={styles.profilePhone}>{userProfile?.phoneNumber || 'No phone verified (Guest)'}</Text>
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-          <TouchableOpacity
-            style={[styles.viewProfileBtn, { flex: 1, marginTop: 0 }]}
-            onPress={() => router.push('/profile')}
-          >
-            <Ionicons name="person" size={15} color="#FFF" />
-            <Text style={styles.viewProfileBtnText}>My Cricket Hub</Text>
-          </TouchableOpacity>
-
-          {userProfile?.claimedPlayerId && (
-            <TouchableOpacity
-              style={[styles.viewProfileBtn, { flex: 1, marginTop: 0, backgroundColor: '#0284C7' }]}
-              onPress={() => router.push(`/player/${userProfile.claimedPlayerId}`)}
-            >
-              <MaterialCommunityIcons name="card-account-details-outline" size={15} color="#FFF" />
-              <Text style={styles.viewProfileBtnText}>Career Figures</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* 2. Easy Persona / User Switcher */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="swap-horizontal" size={22} color="#0284C7" />
-          <Text style={styles.cardTitle}>Switch User / Perspective</Text>
-        </View>
-        <Text style={styles.cardSub}>
-          Switch instantly between Captain, Player, and Organizer to test permissions, join approvals, and scoring roles:
-        </Text>
-
-        <View style={styles.switchList}>
-          {presetUsers.map((u) => {
-            const isCurrent = userProfile?.id === u.id;
-            return (
-              <TouchableOpacity
-                key={u.id}
-                style={[styles.switchCard, isCurrent && styles.switchCardActive]}
-                onPress={() => handleSwitchAccount(u)}
-              >
-                <View style={styles.switchHeader}>
-                  <View style={styles.switchLeft}>
-                    <Text style={[styles.switchName, isCurrent && styles.switchNameActive]}>
-                      {u.name}
-                    </Text>
-                    <Text style={styles.switchDesc}>
-                      {u.role === 'captain'
-                        ? 'Captain • Can approve squad join requests & lead team'
-                        : u.role === 'organizer'
-                        ? 'Organizer • Organizes matches, formats & ball types'
-                        : 'Player • Browses teams & requests to join squads'}
-                    </Text>
-                  </View>
-                  {isCurrent ? (
-                    <View style={styles.activeTag}>
-                      <Text style={styles.activeTagText}>ACTIVE</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.switchAction}>Switch</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* 3. Mobile Number Verification Flow */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="shield-checkmark-outline" size={22} color={Colors.pitchGreen} />
-          <Text style={styles.cardTitle}>Mobile Number Verification</Text>
-        </View>
-
-        <Text style={styles.cardSub}>
-          Guest scoring works completely offline. Verify your phone number to permanently secure your profile.
-        </Text>
-
-        {!userProfile?.isVerified ? (
-          <View style={styles.authSection}>
-            <Text style={styles.inputLabel}>Mobile Number (+91)</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                value={phoneInput}
-                onChangeText={setPhoneInput}
-                placeholder="e.g. 9876543210"
-                keyboardType="phone-pad"
-              />
-              <TouchableOpacity style={styles.sendOtpBtn} onPress={handleSendOtp}>
-                <Text style={styles.sendOtpText}>{otpSent ? 'Resend' : 'Send OTP'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {otpSent && (
-              <View style={[styles.inputRow, { marginTop: 10 }]}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={otpInput}
-                  onChangeText={setOtpInput}
-                  placeholder="Enter 6-digit OTP (123456)"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                />
-                <TouchableOpacity style={styles.verifyBtn} onPress={handleVerifyOtp}>
-                  <Text style={styles.verifyText}>Verify</Text>
-                </TouchableOpacity>
+        {!userProfile?.isGuest && userProfile?.isVerified ? (
+          <View>
+            <View style={styles.profileBox}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {(userProfile?.name || 'User')
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </Text>
               </View>
-            )}
+              <View style={{ flex: 1 }}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.profileName}>{userProfile?.name}</Text>
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.pitchGreen} style={{ marginLeft: 4 }} />
+                </View>
+                <Text style={styles.profileRole}>
+                  Account: <Text style={styles.roleHighlight}>{userProfile.email || 'Verified'}</Text>
+                </Text>
+                {claimedPlayer ? (
+                  <Text style={styles.profilePhone}>Linked Player: {claimedPlayer.name}</Text>
+                ) : userProfile.phoneNumber ? (
+                  <Text style={styles.profilePhone}>Private Contact: {userProfile.phoneNumber}</Text>
+                ) : (
+                  <Text style={styles.profilePhone}>Zero SMS • Email Authenticated</Text>
+                )}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <TouchableOpacity
+                style={[styles.viewProfileBtn, { flex: 1, marginTop: 0 }]}
+                onPress={() => router.push('/profile')}
+              >
+                <Ionicons name="person" size={15} color="#FFF" />
+                <Text style={styles.viewProfileBtnText}>My Cricket Hub</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.viewProfileBtn, { flex: 1, marginTop: 0, backgroundColor: '#EF4444' }]}
+                onPress={handleSignOut}
+              >
+                <Ionicons name="log-out-outline" size={15} color="#FFF" />
+                <Text style={styles.viewProfileBtnText}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
-          <View style={styles.verifiedBox}>
-            <Ionicons name="checkmark-circle" size={20} color={Colors.pitchGreen} />
-            <Text style={styles.verifiedText}>Verified Mobile: {userProfile.phoneNumber}</Text>
+          <View style={styles.guestWarningBox}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Ionicons name="alert-circle" size={22} color={Colors.accentAmber} />
+              <Text style={styles.guestTitle}>Guest Mode (Local Offline Only)</Text>
+            </View>
+            <Text style={styles.guestDesc}>
+              You are currently using Cric in Guest Scorer mode. Friendly match scoring works 100% offline. To sync live scorecards across devices, manage squads, and join tournaments, sign in or register with your email.
+            </Text>
+            <TouchableOpacity
+              style={styles.signInActionBtn}
+              onPress={() => router.push('/auth/login')}
+            >
+              <Ionicons name="log-in-outline" size={18} color="#FFF" />
+              <Text style={styles.signInActionText}>Sign In / Register Account</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -465,64 +374,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
-  authSection: {
-    marginTop: 4,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
+  guestWarningBox: {
+    backgroundColor: '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    padding: 12,
+  },
+  guestTitle: {
     fontSize: 14,
-    color: '#0F172A',
-  },
-  sendOtpBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    justifyContent: 'center',
-  },
-  sendOtpText: {
-    color: '#FFF',
-    fontSize: 12,
     fontWeight: '700',
+    color: '#B45309',
+    marginLeft: 6,
   },
-  verifyBtn: {
-    backgroundColor: Colors.pitchGreen,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    justifyContent: 'center',
-  },
-  verifyText: {
-    color: '#FFF',
+  guestDesc: {
     fontSize: 12,
-    fontWeight: '700',
+    color: '#92400E',
+    lineHeight: 18,
+    marginBottom: 12,
   },
-  verifiedBox: {
+  signInActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    padding: 12,
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
     borderRadius: 8,
+    paddingVertical: 10,
     gap: 8,
   },
-  verifiedText: {
-    color: '#15803D',
-    fontWeight: '700',
+  signInActionText: {
+    color: '#FFF',
     fontSize: 13,
+    fontWeight: '700',
   },
   healthRow: {
     flexDirection: 'row',

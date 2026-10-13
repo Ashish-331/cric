@@ -161,22 +161,22 @@ export default function ProfileScreen() {
         {/* Verification Status Banner */}
         <View style={styles.verificationBanner}>
           <Ionicons
-            name={userProfile?.isVerified ? 'shield-checkmark' : 'shield-outline'}
+            name={userProfile?.isVerified && !userProfile?.isGuest ? 'shield-checkmark' : 'shield-outline'}
             size={16}
-            color={userProfile?.isVerified ? '#00E676' : '#FFB300'}
+            color={userProfile?.isVerified && !userProfile?.isGuest ? '#00E676' : '#FFB300'}
           />
           <Text style={styles.verificationText}>
-            {userProfile?.isVerified
-              ? `Verified Account (${userProfile.phoneNumber})`
-              : 'Guest Scorer (Unverified Phone)'}
+            {userProfile?.isVerified && !userProfile?.isGuest
+              ? `Verified Account (${userProfile.email || 'Email Confirmed'})`
+              : 'Guest Scorer (Local Offline Session)'}
           </Text>
 
-          {!userProfile?.isVerified && (
+          {(!userProfile?.isVerified || userProfile?.isGuest) && (
             <TouchableOpacity
               style={styles.verifyLinkBtn}
               onPress={() => router.push('/auth/login')}
             >
-              <Text style={styles.verifyLinkText}>Verify Phone</Text>
+              <Text style={styles.verifyLinkText}>Sign In / Register</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -269,14 +269,24 @@ export default function ProfileScreen() {
           style={styles.switchPersonaBtn}
           onPress={() => router.push('/settings')}
         >
-          <Ionicons name="swap-horizontal" size={18} color="#00E5FF" />
-          <Text style={styles.switchPersonaText}>Switch User Persona (Captain / Organizer)</Text>
+          <Ionicons name="settings-outline" size={18} color="#00E5FF" />
+          <Text style={styles.switchPersonaText}>Account & Security Settings</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logOutBtn} onPress={handleLogOut}>
-          <Ionicons name="log-out-outline" size={18} color="#FF1744" />
-          <Text style={styles.logOutText}>Sign Out to Guest Scorer</Text>
-        </TouchableOpacity>
+        {!userProfile?.isGuest && userProfile?.isVerified ? (
+          <TouchableOpacity style={styles.logOutBtn} onPress={handleLogOut}>
+            <Ionicons name="log-out-outline" size={18} color="#FF1744" />
+            <Text style={styles.logOutText}>Sign Out of Cric</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.logOutBtn, { borderColor: '#00E676' }]}
+            onPress={() => router.push('/auth/login')}
+          >
+            <Ionicons name="log-in-outline" size={18} color="#00E676" />
+            <Text style={[styles.logOutText, { color: '#00E676' }]}>Sign In / Register Account</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Edit Profile Modal */}

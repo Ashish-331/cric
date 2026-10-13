@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { supabase, supabaseUrl } from './supabaseClient';
 import type { IMatchRepository, OutboxEvent } from '../repositories/types';
 import type { Match } from '../types/cricket';
 import { toCanonicalUUID } from '../utils/uuid';
@@ -129,7 +129,7 @@ export class SyncService {
       }
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321'}/functions/v1/commit-match-action`,
+        `${supabaseUrl}/functions/v1/commit-match-action`,
         {
           method: 'POST',
           headers: {

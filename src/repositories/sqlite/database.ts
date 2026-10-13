@@ -32,7 +32,8 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
         authority_epoch INTEGER NOT NULL DEFAULT 1,
         json_data TEXT NOT NULL,
         last_updated INTEGER NOT NULL,
-        is_demo INTEGER NOT NULL DEFAULT 0
+        is_demo INTEGER NOT NULL DEFAULT 0,
+        account_owner_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS local_actions (
@@ -108,11 +109,18 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       );
 
       CREATE INDEX IF NOT EXISTS idx_matches_tourney ON local_matches(tournament_id);
+      CREATE INDEX IF NOT EXISTS idx_matches_owner ON local_matches(account_owner_id);
       CREATE INDEX IF NOT EXISTS idx_actions_match_seq ON local_actions(match_id, sequence_number);
       CREATE INDEX IF NOT EXISTS idx_outbox_pending ON sync_outbox(status, created_at);
       CREATE INDEX IF NOT EXISTS idx_players_phone ON local_players(phone_number);
       CREATE INDEX IF NOT EXISTS idx_entries_tourney ON local_tournament_entries(tournament_id);
     `);
+
+    try {
+      await db.execAsync('ALTER TABLE local_matches ADD COLUMN account_owner_id TEXT;');
+    } catch {
+      // Column may already exist
+    }
 
     // Migrate from legacy AsyncStorage if needed
     await migrateFromAsyncStorage(db);

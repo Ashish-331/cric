@@ -19,7 +19,7 @@ import { PlayerPerformanceService } from '../../services/playerPerformanceServic
 import { NavigationDrawerModal } from '../../components/navigation/NavigationDrawerModal';
 
 export default function MatchesScreen() {
-  const { matches, refreshMatches, tournaments, refreshTournaments, userProfile } = useCricket();
+  const { matches, refreshMatches, tournaments, refreshTournaments, userProfile, teams } = useCricket();
   const [filter, setFilter] = useState<'all' | 'live' | 'completed'>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -30,17 +30,31 @@ export default function MatchesScreen() {
     setRefreshing(false);
   };
 
-  const filteredMatches = matches.filter((m) => {
+  const authorizedMatches = userProfile?.id
+    ? PlayerPerformanceService.getFilteredMatchesForUser(
+        userProfile.id,
+        'all',
+        matches,
+        teams,
+        tournaments,
+        userProfile.claimedPlayerId ? [userProfile.claimedPlayerId] : []
+      )
+    : [];
+
+  const filteredMatches = authorizedMatches.filter((m) => {
     if (filter === 'live') return m.status === 'live' || m.status === 'innings_break';
     if (filter === 'completed') return m.status === 'completed';
     return true;
   });
 
-  const liveMatch = matches.find((m) => m.status === 'live' || m.status === 'innings_break');
+  const liveMatch = authorizedMatches.find((m) => m.status === 'live' || m.status === 'innings_break');
 
-  // Stage 3: Resolve current player's live performance across ongoing matches
+  // Stage 3: Resolve current player's live performance across ongoing authorized matches
   const myLiveFigure = userProfile?.id
-    ? PlayerPerformanceService.getLiveFiguresForPlayer(userProfile.id, matches)
+    ? PlayerPerformanceService.getLiveFiguresForPlayer(
+        userProfile.claimedPlayerId || userProfile.id,
+        authorizedMatches
+      )
     : null;
 
   const renderMatchCard = ({ item }: { item: Match }) => {

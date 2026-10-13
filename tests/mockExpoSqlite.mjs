@@ -65,7 +65,7 @@ class MockSQLiteDatabase {
         is_demo: isDemo,
       });
     } else if (cleanSql.includes('INSERT INTO local_matches')) {
-      const [id, title, status, tourneyId, rev, epoch, json, updated, isDemo] = params;
+      const [id, title, status, tourneyId, rev, epoch, json, updated, isDemo, accountOwnerId] = params;
       // ON CONFLICT DO UPDATE does NOT delete the parent row, preserving local_actions
       if (!this.tables.has('local_matches')) this.tables.set('local_matches', new Map());
       this.tables.get('local_matches').set(id, {
@@ -78,6 +78,7 @@ class MockSQLiteDatabase {
         json_data: json,
         last_updated: updated,
         is_demo: isDemo,
+        account_owner_id: accountOwnerId || null,
       });
     } else if (cleanSql.includes('UPDATE local_matches SET revision = ?')) {
       const [nextRev, json, updated, id, expectedRev] = params;
@@ -171,9 +172,13 @@ class MockSQLiteDatabase {
 
   async getAllAsync(sql, params = []) {
     if (sql.includes('FROM local_matches')) {
-      const matches = Array.from(this.tables.get('local_matches')?.values() || []);
+      let matches = Array.from(this.tables.get('local_matches')?.values() || []);
+      if (sql.includes('account_owner_id = ?')) {
+        const ownerParam = params[0];
+        matches = matches.filter((m) => m.account_owner_id === ownerParam);
+      }
       if (sql.includes('is_demo = 0')) {
-        return matches.filter((m) => m.is_demo === 0);
+        matches = matches.filter((m) => m.is_demo === 0);
       }
       return matches;
     }

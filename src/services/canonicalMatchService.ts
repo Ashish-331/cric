@@ -131,6 +131,7 @@ export class CanonicalMatchService {
           revision: match.revision || 0,
           authority_epoch: match.authorityEpoch || 1,
           assigned_scorer_account_id: actorAccountId || null,
+          organizer_account_id: actorAccountId || null,
           state_payload: matchPayload,
         })
         .select()

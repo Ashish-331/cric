@@ -130,6 +130,7 @@ export interface Team {
   managerUserId?: string;
   isOpponent?: boolean;
   inviteCode?: string;
+  isDemo?: boolean;
   players: Player[];
 }
 
@@ -319,6 +320,9 @@ export interface Match {
   authorityEpoch?: number;
   approvalStatus?: MatchApprovalStatus;
   resultDetails?: MatchResultDetails;
+  isDemo?: boolean;
+  assignedScorerAccountId?: string;
+  isPublicBroadcast?: boolean;
 }
 
 export interface ScoringCommandResult {

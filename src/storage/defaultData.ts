@@ -374,6 +374,7 @@ export const DEFAULT_TEAMS: Team[] = [
     captainName: 'Rohit Sharma',
     createdByUserId: 'user_rohit',
     inviteCode: 'INV-MUMBAI',
+    isDemo: true,
     players: DEFAULT_PLAYERS_TEAM1,
   },
   {
@@ -386,6 +387,7 @@ export const DEFAULT_TEAMS: Team[] = [
     captainName: 'Faf du Plessis',
     createdByUserId: 'user_faf',
     inviteCode: 'INV-BLR01',
+    isDemo: true,
     players: DEFAULT_PLAYERS_TEAM2,
   },
   {
@@ -398,6 +400,7 @@ export const DEFAULT_TEAMS: Team[] = [
     captainName: 'Ruturaj Gaikwad',
     createdByUserId: 'user_rutu',
     inviteCode: 'INV-CSK01',
+    isDemo: true,
     players: [
       {
         id: 'p3_1',
@@ -494,6 +497,7 @@ export const createSampleMatch = (): Match => {
 
   return {
     id: 'sample_match_1',
+    isDemo: true,
     title: 'Wankhede Derby 2026',
     format: 't20',
     venue: 'Wankhede Stadium, Mumbai',

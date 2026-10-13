@@ -21,10 +21,11 @@ import { WagonWheelSVG } from '../../../components/match/WagonWheelSVG';
 import { PitchRadarSVG } from '../../../components/match/PitchRadarSVG';
 import { SyncService } from '../../../services/syncService';
 import { CanonicalMatchService } from '../../../services/canonicalMatchService';
+import { PlayerPerformanceService } from '../../../services/playerPerformanceService';
 
 export default function MatchCentreScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { loadMatchById, exportMatch, updateMatchStatus, userProfile } = useCricket();
+  const { loadMatchById, exportMatch, updateMatchStatus, userProfile, teams, tournaments } = useCricket();
 
   const [match, setMatch] = useState<Match | null>(null);
   const [activeTab, setActiveTab] = useState<'scorecard' | 'commentary' | 'analytics' | 'info'>('scorecard');
@@ -79,6 +80,34 @@ export default function MatchCentreScreen() {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Loading match details...</Text>
+      </View>
+    );
+  }
+
+  const isAuthorized = PlayerPerformanceService.isAccountAuthorizedForMatch(
+    userProfile?.id || '',
+    match,
+    teams,
+    tournaments,
+    userProfile?.claimedPlayerId ? [userProfile.claimedPlayerId] : []
+  );
+
+  if (!isAuthorized) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <Ionicons name="lock-closed-outline" size={64} color="#EF4444" />
+        <Text style={{ fontSize: 20, fontWeight: '700', color: '#FFF', marginTop: 16 }}>
+          Access Restricted
+        </Text>
+        <Text style={{ fontSize: 14, color: '#94A3B8', textAlign: 'center', marginTop: 8, marginBottom: 24 }}>
+          This match is private. Only authorized participants, scorers, organizers, and affiliated squad members can view it.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#1E2C4F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '600' }}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }

@@ -233,9 +233,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           console.warn('SQLite init warning:', dbErr);
         }
 
+        // Clean out any untouched legacy demo fixtures from local storage
+        await StorageService.purgeUntouchedDemoFixtures().catch(() => {});
+
         let initialMatches: Match[] = [];
         try {
-          initialMatches = await matchRepository.listMatches();
+          initialMatches = await matchRepository.listMatches({ excludeDemo: true });
         } catch {
           // fallback if SQLite not ready
         }
@@ -325,6 +328,8 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           role: 'scorer',
         };
         setUserProfile(guestUser);
+        setActiveMatch(null);
+        setMatches([]);
         StorageService.saveUserProfile(guestUser).catch(() => {});
       }
     });
@@ -335,7 +340,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [applyCareerStatsRollup]);
 
   const refreshMatches = useCallback(async () => {
-    let loadedMatches = await matchRepository.listMatches();
+    let loadedMatches: Match[] = [];
+    try {
+      loadedMatches = await matchRepository.listMatches({ excludeDemo: true });
+    } catch {
+      // fallback
+    }
     if (loadedMatches.length === 0) {
       loadedMatches = await StorageService.getMatches();
     }
@@ -357,6 +367,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const switchUser = useCallback(async (newUser: UserProfile) => {
     await StorageService.saveUserProfile(newUser);
     setUserProfile(newUser);
+    setActiveMatch(null);
   }, []);
 
   const updateUserProfile = useCallback(
@@ -1329,6 +1340,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         scorerName: scorerName || userProfile?.name || 'Assigned Scorer',
         organizerName: organizerName || userProfile?.name || 'Match Organizer',
         organizerUserId: userProfile?.id,
+        assignedScorerAccountId: userProfile?.role === 'scorer' ? userProfile?.id : undefined,
         tournamentId: params.tournamentId,
         rules: {
           totalOvers,

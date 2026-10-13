@@ -31,6 +31,7 @@ export interface MatchFilter {
   limit?: number;
   offset?: number;
   excludeDemo?: boolean;
+  accountId?: string;
 }
 
 export interface IMatchRepository {

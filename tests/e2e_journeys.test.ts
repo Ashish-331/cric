@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StorageService, type UserProfile } from '../src/storage/storageService';
+import { DEFAULT_TEAMS } from '../src/storage/defaultData';
 import { CricketEngine, createInitialInnings } from '../src/engine/cricketEngine';
 import { StatsRollupEngine } from '../src/engine/statsRollupEngine';
 import type { Team, Match, Delivery, MatchRules, Player } from '../src/types/cricket';
@@ -131,7 +132,8 @@ test('End-to-End User Journeys 1 through 6 Complete Simulation', async () => {
   // =========================================================================
   // JOURNEY 4: Organizer creates Match between 2 registered teams
   // =========================================================================
-  // Opposition team: Royal Challengers (already seeded in defaultData)
+  // Opposition team: Royal Challengers (save to storage for match creation)
+  await StorageService.saveTeam(DEFAULT_TEAMS[1]);
   const allTeams = await StorageService.getTeams();
   const rcbTeam = allTeams.find((t) => t.id === 'team_bangalore') || allTeams[1];
 

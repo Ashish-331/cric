@@ -10,6 +10,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
+import { PlayerPerformanceService } from '../../services/playerPerformanceService';
 
 interface SearchResult {
   id: string;
@@ -20,7 +21,7 @@ interface SearchResult {
 }
 
 export default function SearchScreen() {
-  const { matches, teams, tournaments } = useCricket();
+  const { matches, teams, tournaments, userProfile } = useCricket();
   const [query, setQuery] = useState('');
 
   const searchResults: SearchResult[] = React.useMemo(() => {
@@ -29,8 +30,19 @@ export default function SearchScreen() {
 
     const results: SearchResult[] = [];
 
-    // Search matches
-    for (const m of matches) {
+    const authorizedMatches = userProfile?.id
+      ? PlayerPerformanceService.getFilteredMatchesForUser(
+          userProfile.id,
+          'all',
+          matches,
+          teams,
+          tournaments,
+          userProfile.claimedPlayerId ? [userProfile.claimedPlayerId] : []
+        )
+      : [];
+
+    // Search matches (scoped to authorized matches)
+    for (const m of authorizedMatches) {
       if (
         m.title.toLowerCase().includes(q) ||
         m.venue.toLowerCase().includes(q) ||

@@ -22,13 +22,14 @@ export class SQLiteMatchRepository implements IMatchRepository {
       throw new Error('Cannot persist invalid match entity');
     }
     const db = await getDatabase();
-    const isDemo = match.id.includes('demo') || match.title?.includes('Demo') ? 1 : 0;
+    const isDemo = match.isDemo || match.id === 'sample_match_1' || match.id.toLowerCase().includes('demo') || match.title?.toLowerCase().includes('demo') || match.title === 'Wankhede Derby 2026' ? 1 : 0;
+    const accountOwnerId = match.organizerUserId || null;
     const now = Date.now();
 
     await db.runAsync(
       `INSERT INTO local_matches
-        (id, title, status, tournament_id, revision, authority_epoch, json_data, last_updated, is_demo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, title, status, tournament_id, revision, authority_epoch, json_data, last_updated, is_demo, account_owner_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         status = excluded.status,
@@ -37,7 +38,8 @@ export class SQLiteMatchRepository implements IMatchRepository {
         authority_epoch = excluded.authority_epoch,
         json_data = excluded.json_data,
         last_updated = excluded.last_updated,
-        is_demo = excluded.is_demo`,
+        is_demo = excluded.is_demo,
+        account_owner_id = COALESCE(excluded.account_owner_id, local_matches.account_owner_id)`,
       [
         match.id,
         match.title || 'Untitled Match',
@@ -48,6 +50,7 @@ export class SQLiteMatchRepository implements IMatchRepository {
         JSON.stringify(match),
         match.lastUpdated || now,
         isDemo,
+        accountOwnerId,
       ]
     );
   }
@@ -57,6 +60,10 @@ export class SQLiteMatchRepository implements IMatchRepository {
     let query = 'SELECT json_data FROM local_matches WHERE 1=1';
     const params: any[] = [];
 
+    if (filter?.accountId) {
+      query += ' AND account_owner_id = ?';
+      params.push(filter.accountId);
+    }
     if (filter?.tournamentId) {
       query += ' AND tournament_id = ?';
       params.push(filter.tournamentId);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StorageService, type UserProfile } from '../src/storage/storageService';
+import { DEFAULT_TEAMS } from '../src/storage/defaultData';
 import {
   CricketEngine,
   createInitialInnings,
@@ -564,8 +565,10 @@ test('QA Test 5: End-to-End Simulation of All 6 Core User Journeys', async () =>
   // -------------------------------------------------------------------------
   // Journey 4: Match Setup by Organizer with Interactive Coin Toss
   // -------------------------------------------------------------------------
-  // Second team: Royal Challengers
-  const rcbTeam = loadedTeams.find((t) => t.id === 'team_bangalore') || loadedTeams[1];
+  // Second team: Royal Challengers (save to storage for match creation)
+  await StorageService.saveTeam(DEFAULT_TEAMS[1]);
+  const teamsWithOpponent = await StorageService.getTeams();
+  const rcbTeam = teamsWithOpponent.find((t) => t.id === 'team_bangalore') || teamsWithOpponent[1];
 
   // Coin Toss: Chennai Lions win toss and elect to bat
   const tossDecision: TossDecision = 'bat';

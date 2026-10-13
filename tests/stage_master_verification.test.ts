@@ -130,7 +130,7 @@ test('MASTER-003: PlayerPerformanceService resolves My Cricket filters (Your, Pl
   assert.equal(playedMatches.some((m) => m.id === 'match_user_played'), true);
   assert.equal(playedMatches.some((m) => m.id === 'match_unrelated'), false);
 
-  // Test 'all' filter
+  // Test 'all' filter enforces account visibility (denying unrelated match)
   const publicMatches = PlayerPerformanceService.getFilteredMatchesForUser(
     'user_ashish',
     'all',
@@ -138,7 +138,10 @@ test('MASTER-003: PlayerPerformanceService resolves My Cricket filters (Your, Pl
     [],
     []
   );
-  assert.equal(publicMatches.length, 3);
+  assert.equal(publicMatches.length, 2);
+  assert.equal(publicMatches.some((m) => m.id === 'match_user_created'), true);
+  assert.equal(publicMatches.some((m) => m.id === 'match_user_played'), true);
+  assert.equal(publicMatches.some((m) => m.id === 'match_unrelated'), false);
 });
 
 test('MASTER-004: Live player performance extraction across phones with delay detection', async () => {

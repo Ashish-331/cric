@@ -14,17 +14,29 @@ import { useCricket } from '../../context/CricketContext';
 import { Badge } from '../../components/common/Badge';
 import { supabase } from '../../services/supabaseClient';
 import { toCanonicalUUID } from '../../utils/uuid';
+import { PlayerPerformanceService } from '../../services/playerPerformanceService';
 
 export default function GoLiveScreen() {
-  const { matches, userProfile } = useCricket();
+  const { matches, userProfile, teams, tournaments } = useCricket();
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [broadcastActive, setBroadcastActive] = useState<boolean>(false);
 
-  const ongoingMatches = matches.filter(
+  const authorizedMatches = userProfile?.id
+    ? PlayerPerformanceService.getFilteredMatchesForUser(
+        userProfile.id,
+        'your',
+        matches,
+        teams,
+        tournaments,
+        userProfile.claimedPlayerId ? [userProfile.claimedPlayerId] : []
+      )
+    : [];
+
+  const ongoingMatches = authorizedMatches.filter(
     (m) => m.status === 'live' || m.status === 'innings_break' || m.status === 'scheduled'
   );
 
-  const selectedMatch = matches.find((m) => m.id === selectedMatchId) || ongoingMatches[0];
+  const selectedMatch = authorizedMatches.find((m) => m.id === selectedMatchId) || ongoingMatches[0];
 
   const handleStartScoreBroadcast = async () => {
     if (!selectedMatch) {

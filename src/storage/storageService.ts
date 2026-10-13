@@ -211,9 +211,7 @@ export class StorageService {
       const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
       const index: string[] = indexRaw ? JSON.parse(indexRaw) : [];
       if (index.length === 0) {
-        const sample = createSampleMatch();
-        await StorageService.saveMatch(sample);
-        return [sample];
+        return [];
       }
 
       const keys = index.map((id) => `${MATCH_KEY_PREFIX}${id}`);
@@ -318,8 +316,7 @@ export class StorageService {
     try {
       const data = await AsyncStorage.getItem(TEAMS_STORAGE_KEY);
       if (!data) {
-        await AsyncStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(DEFAULT_TEAMS));
-        return DEFAULT_TEAMS;
+        return [];
       }
       return JSON.parse(data);
     } catch (err: any) {
@@ -357,13 +354,12 @@ export class StorageService {
     try {
       const data = await AsyncStorage.getItem(JOIN_REQUESTS_KEY);
       if (!data) {
-        await AsyncStorage.setItem(JOIN_REQUESTS_KEY, JSON.stringify(DEFAULT_JOIN_REQUESTS));
-        return DEFAULT_JOIN_REQUESTS;
+        return [];
       }
       return JSON.parse(data);
     } catch (err) {
       console.error('Failed to load join requests from AsyncStorage', err);
-      return DEFAULT_JOIN_REQUESTS;
+      return [];
     }
   }
 
@@ -916,6 +912,73 @@ export class StorageService {
     }
 
     return { claimedCount, updatedTeams, firstClaimedPlayerId };
+  }
+
+  /**
+   * Conservatively and idempotently purges untouched hardcoded seed fixtures (sample_match_1, team_mumbai, etc.)
+   * from local production storage while strictly preserving all genuine user-created records.
+   */
+  static async purgeUntouchedDemoFixtures(): Promise<{ purgedMatches: number; purgedTeams: number }> {
+    let purgedMatches = 0;
+    let purgedTeams = 0;
+
+    try {
+      // 1. Clean untouched demo match from index
+      const indexRaw = await AsyncStorage.getItem(MATCH_INDEX_KEY_V2);
+      if (indexRaw) {
+        const index: string[] = JSON.parse(indexRaw);
+        const demoMatchIds = ['sample_match_1'];
+        const matchesToPurge = index.filter((id) => demoMatchIds.includes(id));
+        if (matchesToPurge.length > 0) {
+          for (const mid of matchesToPurge) {
+            const raw = await AsyncStorage.getItem(`${MATCH_KEY_PREFIX}${mid}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.title === 'Wankhede Derby 2026' || parsed.isDemo) {
+                await AsyncStorage.removeItem(`${MATCH_KEY_PREFIX}${mid}`);
+                purgedMatches++;
+              }
+            }
+          }
+          const updatedIndex = index.filter((id) => !demoMatchIds.includes(id));
+          await AsyncStorage.setItem(MATCH_INDEX_KEY_V2, JSON.stringify(updatedIndex));
+        }
+      }
+
+      // 2. Clean untouched demo teams
+      const teamsRaw = await AsyncStorage.getItem(TEAMS_STORAGE_KEY);
+      if (teamsRaw) {
+        const teams: Team[] = JSON.parse(teamsRaw);
+        const demoTeamIds = ['team_mumbai', 'team_bangalore', 'team_chennai'];
+        const remainingTeams = teams.filter((t) => {
+          if (demoTeamIds.includes(t.id)) {
+            if (['Mumbai Strikers', 'Royal Challengers', 'Chennai Super Kings'].includes(t.name)) {
+              purgedTeams++;
+              return false;
+            }
+          }
+          return true;
+        });
+        if (remainingTeams.length !== teams.length) {
+          await AsyncStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(remainingTeams));
+        }
+      }
+
+      // 3. Clean untouched demo join requests
+      const joinReqRaw = await AsyncStorage.getItem(JOIN_REQUESTS_KEY);
+      if (joinReqRaw) {
+        const reqs: JoinRequest[] = JSON.parse(joinReqRaw);
+        const demoReqIds = ['req_1', 'req_2', 'req_3'];
+        const remainingReqs = reqs.filter((r) => !demoReqIds.includes(r.id));
+        if (remainingReqs.length !== reqs.length) {
+          await AsyncStorage.setItem(JOIN_REQUESTS_KEY, JSON.stringify(remainingReqs));
+        }
+      }
+    } catch (err) {
+      console.warn('Demo purge notice:', err);
+    }
+
+    return { purgedMatches, purgedTeams };
   }
 }
 

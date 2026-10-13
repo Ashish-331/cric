@@ -92,7 +92,8 @@ export default function MyCricketScreen() {
     matchFilter,
     allMergedMatches,
     teams,
-    tournaments
+    tournaments,
+    userProfile?.claimedPlayerId ? [userProfile.claimedPlayerId] : []
   );
 
   const userTeams = teams.filter(

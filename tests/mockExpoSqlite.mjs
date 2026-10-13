@@ -1,7 +1,17 @@
 class MockSQLiteDatabase {
   constructor() {
     this.tables = new Map();
+    this.tableColumns = new Map();
+    this.tableColumns.set('local_matches', [
+      'id', 'title', 'status', 'tournament_id', 'revision', 'authority_epoch', 'json_data', 'last_updated', 'is_demo', 'account_owner_id'
+    ]);
     this.transactionSnapshot = null;
+  }
+
+  setLegacySchemaWithoutOwnerColumn() {
+    this.tableColumns.set('local_matches', [
+      'id', 'title', 'status', 'tournament_id', 'revision', 'authority_epoch', 'json_data', 'last_updated', 'is_demo'
+    ]);
   }
 
   cloneTables() {
@@ -36,6 +46,17 @@ class MockSQLiteDatabase {
       if (this.transactionSnapshot) {
         this.tables = this.transactionSnapshot;
         this.transactionSnapshot = null;
+      }
+    } else if (sql.includes('ALTER TABLE local_matches ADD COLUMN account_owner_id')) {
+      const cols = this.tableColumns.get('local_matches') || [];
+      if (!cols.includes('account_owner_id')) {
+        cols.push('account_owner_id');
+        this.tableColumns.set('local_matches', cols);
+      }
+    } else if (sql.includes('idx_matches_owner') && sql.includes('account_owner_id')) {
+      const cols = this.tableColumns.get('local_matches') || [];
+      if (!cols.includes('account_owner_id')) {
+        throw new Error("Call to function 'NativeDatabase.execAsync' has been rejected. -> Caused by: no such column: account_owner_id");
       }
     }
     return Promise.resolve();
@@ -140,6 +161,12 @@ class MockSQLiteDatabase {
         entry.retry_count = (entry.retry_count || 0) + 1;
         entry.last_error = error;
       }
+    } else if (cleanSql.includes('UPDATE local_matches SET account_owner_id = ? WHERE id = ?')) {
+      const [ownerId, matchId] = params;
+      const match = this.tables.get('local_matches')?.get(matchId);
+      if (match) {
+        match.account_owner_id = ownerId;
+      }
     } else if (cleanSql.includes('DELETE FROM local_matches')) {
       const id = params[0];
       this.tables.get('local_matches')?.delete(id);
@@ -171,8 +198,22 @@ class MockSQLiteDatabase {
   }
 
   async getAllAsync(sql, params = []) {
+    if (sql.includes('PRAGMA table_info(local_matches)')) {
+      const cols = this.tableColumns.get('local_matches') || [];
+      return cols.map((name, cid) => ({
+        cid,
+        name,
+        type: 'TEXT',
+        notnull: 0,
+        dflt_value: null,
+        pk: name === 'id' ? 1 : 0,
+      }));
+    }
     if (sql.includes('FROM local_matches')) {
       let matches = Array.from(this.tables.get('local_matches')?.values() || []);
+      if (sql.includes('WHERE account_owner_id IS NULL')) {
+        return matches.filter((m) => !m.account_owner_id);
+      }
       if (sql.includes('account_owner_id = ?')) {
         const ownerParam = params[0];
         matches = matches.filter((m) => m.account_owner_id === ownerParam);
@@ -213,7 +254,12 @@ export function resetMockDatabase() {
   mockDb = new MockSQLiteDatabase();
 }
 
+export function setMockLegacyDatabase() {
+  mockDb.setLegacySchemaWithoutOwnerColumn();
+}
+
 export default {
   openDatabaseAsync,
   resetMockDatabase,
+  setMockLegacyDatabase,
 };

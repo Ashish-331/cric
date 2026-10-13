@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCricket } from '../../context/CricketContext';
 import { Match } from '../../types/cricket';
 import { useTheme } from '../../theme/useTheme';
@@ -23,6 +24,7 @@ import { NavigationDrawerModal } from '../../components/navigation/NavigationDra
 export default function MatchesScreen() {
   const { matches, refreshMatches, tournaments, refreshTournaments, userProfile, teams } = useCricket();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [filter, setFilter] = useState<'all' | 'live' | 'completed'>('all');
   const [refreshing, setRefreshing] = useState(false);
@@ -80,7 +82,16 @@ export default function MatchesScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.canvas }]}>
       {/* Top App Bar with Navigation Drawer Toggle, Title, Search, Inbox, Notifications */}
-      <View style={[styles.appHeaderBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+      <View
+        style={[
+          styles.appHeaderBar,
+          {
+            backgroundColor: theme.surface,
+            borderBottomColor: theme.border,
+            paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 12 : 12),
+          },
+        ]}
+      >
         <TouchableOpacity style={styles.drawerToggleBtn} onPress={() => setDrawerVisible(true)}>
           <Ionicons name="menu" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
@@ -347,7 +358,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
   },

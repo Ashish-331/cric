@@ -8,125 +8,168 @@ let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 const DB_NAME = 'cric_local.db';
 
+export function resetDatabaseInstance(): void {
+  dbInstance = null;
+  initPromise = null;
+}
+
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbInstance) return dbInstance;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const db = await SQLite.openDatabaseAsync(DB_NAME);
-
-    // Apply WAL mode and foreign keys (supported on native)
-    if (Platform.OS !== 'web') {
-      await db.execAsync('PRAGMA journal_mode = WAL;');
-      await db.execAsync('PRAGMA foreign_keys = ON;');
-    }
-
-    // Initialize Schema
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS local_matches (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        status TEXT,
-        tournament_id TEXT,
-        revision INTEGER NOT NULL DEFAULT 0,
-        authority_epoch INTEGER NOT NULL DEFAULT 1,
-        json_data TEXT NOT NULL,
-        last_updated INTEGER NOT NULL,
-        is_demo INTEGER NOT NULL DEFAULT 0,
-        account_owner_id TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS local_actions (
-        id TEXT PRIMARY KEY,
-        match_id TEXT NOT NULL,
-        action_type TEXT NOT NULL,
-        sequence_number INTEGER NOT NULL,
-        expected_revision INTEGER NOT NULL,
-        payload TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (match_id) REFERENCES local_matches(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS sync_outbox (
-        id TEXT PRIMARY KEY,
-        match_id TEXT NOT NULL,
-        action_id TEXT NOT NULL,
-        expected_revision INTEGER NOT NULL,
-        authority_epoch INTEGER NOT NULL,
-        action_type TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        synced_at INTEGER,
-        retry_count INTEGER NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'pending',
-        last_error TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS local_players (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone_number TEXT,
-        account_id TEXT,
-        is_verified INTEGER NOT NULL DEFAULT 0,
-        is_guest INTEGER NOT NULL DEFAULT 0,
-        json_data TEXT NOT NULL,
-        last_updated INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS local_teams (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        short_name TEXT NOT NULL,
-        captain_player_id TEXT,
-        json_data TEXT NOT NULL,
-        last_updated INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS local_tournaments (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        format TEXT NOT NULL,
-        status TEXT NOT NULL,
-        organizer_id TEXT,
-        json_data TEXT NOT NULL,
-        last_updated INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS local_tournament_entries (
-        id TEXT PRIMARY KEY,
-        tournament_id TEXT NOT NULL,
-        team_id TEXT NOT NULL,
-        status TEXT NOT NULL,
-        json_data TEXT NOT NULL,
-        last_updated INTEGER NOT NULL,
-        FOREIGN KEY (tournament_id) REFERENCES local_tournaments(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS migration_meta (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        applied_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_matches_tourney ON local_matches(tournament_id);
-      CREATE INDEX IF NOT EXISTS idx_matches_owner ON local_matches(account_owner_id);
-      CREATE INDEX IF NOT EXISTS idx_actions_match_seq ON local_actions(match_id, sequence_number);
-      CREATE INDEX IF NOT EXISTS idx_outbox_pending ON sync_outbox(status, created_at);
-      CREATE INDEX IF NOT EXISTS idx_players_phone ON local_players(phone_number);
-      CREATE INDEX IF NOT EXISTS idx_entries_tourney ON local_tournament_entries(tournament_id);
-    `);
-
     try {
-      await db.execAsync('ALTER TABLE local_matches ADD COLUMN account_owner_id TEXT;');
-    } catch {
-      // Column may already exist
+      const db = await SQLite.openDatabaseAsync(DB_NAME);
+
+      // Apply WAL mode and foreign keys (supported on native)
+      if (Platform.OS !== 'web') {
+        await db.execAsync('PRAGMA journal_mode = WAL;');
+        await db.execAsync('PRAGMA foreign_keys = ON;');
+      }
+
+      // 1. Initialize Base Schema (Tables only)
+      // Note: Indices and additive columns are handled next to guarantee upgrade compatibility
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS local_matches (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          status TEXT,
+          tournament_id TEXT,
+          revision INTEGER NOT NULL DEFAULT 0,
+          authority_epoch INTEGER NOT NULL DEFAULT 1,
+          json_data TEXT NOT NULL,
+          last_updated INTEGER NOT NULL,
+          is_demo INTEGER NOT NULL DEFAULT 0,
+          account_owner_id TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS local_actions (
+          id TEXT PRIMARY KEY,
+          match_id TEXT NOT NULL,
+          action_type TEXT NOT NULL,
+          sequence_number INTEGER NOT NULL,
+          expected_revision INTEGER NOT NULL,
+          payload TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (match_id) REFERENCES local_matches(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_outbox (
+          id TEXT PRIMARY KEY,
+          match_id TEXT NOT NULL,
+          action_id TEXT NOT NULL,
+          expected_revision INTEGER NOT NULL,
+          authority_epoch INTEGER NOT NULL,
+          action_type TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          synced_at INTEGER,
+          retry_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'pending',
+          last_error TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS local_players (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          phone_number TEXT,
+          account_id TEXT,
+          is_verified INTEGER NOT NULL DEFAULT 0,
+          is_guest INTEGER NOT NULL DEFAULT 0,
+          json_data TEXT NOT NULL,
+          last_updated INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS local_teams (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          short_name TEXT NOT NULL,
+          captain_player_id TEXT,
+          json_data TEXT NOT NULL,
+          last_updated INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS local_tournaments (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          format TEXT NOT NULL,
+          status TEXT NOT NULL,
+          organizer_id TEXT,
+          json_data TEXT NOT NULL,
+          last_updated INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS local_tournament_entries (
+          id TEXT PRIMARY KEY,
+          tournament_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          json_data TEXT NOT NULL,
+          last_updated INTEGER NOT NULL,
+          FOREIGN KEY (tournament_id) REFERENCES local_tournaments(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS migration_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          applied_at INTEGER NOT NULL
+        );
+      `);
+
+      // 2. Safe additive column migration: ensure account_owner_id exists on local_matches
+      // On existing databases, CREATE TABLE IF NOT EXISTS does not alter existing tables.
+      // We inspect PRAGMA table_info BEFORE attempting to create the index.
+      const matchColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(local_matches);');
+      const hasOwnerCol = matchColumns.some((col) => col.name === 'account_owner_id');
+
+      if (!hasOwnerCol) {
+        await db.execAsync('ALTER TABLE local_matches ADD COLUMN account_owner_id TEXT;');
+      }
+
+      // Safe ownership backfill for unassigned rows using trusted match metadata
+      try {
+        const unassignedRows = await db.getAllAsync<{ id: string; json_data: string }>(
+          'SELECT id, json_data FROM local_matches WHERE account_owner_id IS NULL;'
+        );
+        for (const row of unassignedRows) {
+          try {
+            const parsed = JSON.parse(row.json_data);
+            const ownerId = parsed.organizerUserId || parsed.creatorUserId || null;
+            if (ownerId) {
+              await db.runAsync(
+                'UPDATE local_matches SET account_owner_id = ? WHERE id = ?;',
+                [ownerId, row.id]
+              );
+            }
+          } catch {
+            // Ignore parse errors on malformed legacy records
+          }
+        }
+      } catch (backfillErr) {
+        console.warn('Safe ownership backfill notice:', backfillErr);
+      }
+
+      // 3. Create indices (now guaranteed that account_owner_id exists)
+      await db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_matches_tourney ON local_matches(tournament_id);
+        CREATE INDEX IF NOT EXISTS idx_matches_owner ON local_matches(account_owner_id);
+        CREATE INDEX IF NOT EXISTS idx_actions_match_seq ON local_actions(match_id, sequence_number);
+        CREATE INDEX IF NOT EXISTS idx_outbox_pending ON sync_outbox(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_players_phone ON local_players(phone_number);
+        CREATE INDEX IF NOT EXISTS idx_entries_tourney ON local_tournament_entries(tournament_id);
+      `);
+
+      // 4. Migrate from legacy AsyncStorage if needed
+      await migrateFromAsyncStorage(db);
+
+      dbInstance = db;
+      return db;
+    } catch (err) {
+      // Reset initialization state on error so subsequent calls can retry
+      initPromise = null;
+      dbInstance = null;
+      throw err;
     }
-
-    // Migrate from legacy AsyncStorage if needed
-    await migrateFromAsyncStorage(db);
-
-    dbInstance = db;
-    return db;
   })();
 
   return initPromise;

@@ -517,8 +517,13 @@ export default function NewMatchScreen() {
         );
       }
     } catch (err: any) {
+      console.error('Failed to create and persist match:', err);
       CricketHaptics.wicket();
-      Alert.alert('Error', err.message || 'Failed to initialize match.');
+      Alert.alert(
+        'Unable to Save Match',
+        'The match setup could not be saved to local storage. Your entered details, teams, and lineups are preserved in this form. Please tap "START MATCH & SCORING" again to retry.',
+        [{ text: 'OK' }]
+      );
     }
   };
 

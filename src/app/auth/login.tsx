@@ -56,8 +56,9 @@ export default function LoginScreen() {
   const [selectedCountry, setSelectedCountry] = useState<CountryCode>(COUNTRY_CODES[0]);
   const [countryModalVisible, setCountryModalVisible] = useState(false);
 
-  // Email Confirmation OTP State
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  // Email Confirmation OTP State (Supports both 8-digit and 6-digit codes)
+  const [otpLength, setOtpLength] = useState<6 | 8>(8);
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(8).fill(''));
   const [timer, setTimer] = useState(60);
   const [isResendActive, setIsResendActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -194,8 +195,8 @@ export default function LoginScreen() {
   // Handle verifying Email Confirmation OTP
   const handleVerifyEmailOtp = async () => {
     const entered = otpDigits.join('');
-    if (entered.length < 6) {
-      Alert.alert('Incomplete Code', 'Please enter all 6 digits of the confirmation code.');
+    if (entered.length < otpLength) {
+      Alert.alert('Incomplete Code', `Please enter all ${otpLength} digits of the confirmation code.`);
       return;
     }
 
@@ -236,12 +237,29 @@ export default function LoginScreen() {
   };
 
   const handleOtpChange = (text: string, index: number) => {
+    // Support pasting full code (e.g. 6 or 8 digits)
+    const digitsOnly = text.replace(/\D/g, '');
+    if (digitsOnly.length > 1) {
+      const targetLen = digitsOnly.length >= 8 ? 8 : (digitsOnly.length >= 6 ? 6 : otpLength);
+      if (targetLen !== otpLength) {
+        setOtpLength(targetLen);
+      }
+      const newDigits = Array(targetLen).fill('');
+      digitsOnly.slice(0, targetLen).split('').forEach((char, i) => {
+        newDigits[i] = char;
+      });
+      setOtpDigits(newDigits);
+      const nextIdx = Math.min(digitsOnly.length, targetLen - 1);
+      otpInputs.current[nextIdx]?.focus();
+      return;
+    }
+
     const val = text.slice(-1);
     const newDigits = [...otpDigits];
     newDigits[index] = val;
     setOtpDigits(newDigits);
 
-    if (val && index < 5) {
+    if (val && index < otpLength - 1) {
       otpInputs.current[index + 1]?.focus();
     }
   };
@@ -559,7 +577,34 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              {/* Segmented 6-digit OTP Inputs */}
+              {/* Code Length Selector Toggle (8 vs 6 digits) */}
+              <View style={styles.codeLengthRow}>
+                <Text style={styles.codeLengthLabel}>Code Length:</Text>
+                <TouchableOpacity
+                  style={[styles.codeLengthChip, otpLength === 8 && styles.codeLengthChipActive]}
+                  onPress={() => {
+                    setOtpLength(8);
+                    setOtpDigits(Array(8).fill(''));
+                  }}
+                >
+                  <Text style={[styles.codeLengthText, otpLength === 8 && styles.codeLengthTextActive]}>
+                    8 Digits
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.codeLengthChip, otpLength === 6 && styles.codeLengthChipActive]}
+                  onPress={() => {
+                    setOtpLength(6);
+                    setOtpDigits(Array(6).fill(''));
+                  }}
+                >
+                  <Text style={[styles.codeLengthText, otpLength === 6 && styles.codeLengthTextActive]}>
+                    6 Digits
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Segmented OTP Inputs */}
               <View style={styles.otpBoxesRow}>
                 {otpDigits.map((digit, idx) => (
                   <TextInput
@@ -572,7 +617,7 @@ export default function LoginScreen() {
                     onChangeText={(txt) => handleOtpChange(txt, idx)}
                     onKeyPress={(e) => handleOtpKeyPress(e, idx)}
                     keyboardType="number-pad"
-                    maxLength={1}
+                    maxLength={otpLength}
                     selectTextOnFocus
                   />
                 ))}
@@ -908,20 +953,55 @@ const styles = StyleSheet.create({
   backBtn: {
     padding: 6,
   },
+  codeLengthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  codeLengthLabel: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  codeLengthChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#121C38',
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  codeLengthChipActive: {
+    borderColor: '#00E5FF',
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
+  },
+  codeLengthText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  codeLengthTextActive: {
+    color: '#00E5FF',
+  },
   otpBoxesRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 14,
   },
   otpBox: {
-    width: 44,
-    height: 52,
-    borderRadius: 10,
+    flex: 1,
+    maxWidth: 42,
+    height: 50,
+    borderRadius: 8,
     backgroundColor: '#121C38',
     borderWidth: 1.5,
     borderColor: '#1E2C4F',
     textAlign: 'center',
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '900',
     color: '#00E5FF',
     fontVariant: ['tabular-nums'],

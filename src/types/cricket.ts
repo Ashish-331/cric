@@ -126,6 +126,8 @@ export interface Team {
   captainPlayerId?: string;
   captainName?: string;
   captainPhone?: string;
+  captainEmail?: string;
+  captainStatus?: 'active' | 'invited' | 'pending';
   createdByUserId?: string;
   managerUserId?: string;
   isOpponent?: boolean;
@@ -323,6 +325,27 @@ export interface Match {
   isDemo?: boolean;
   assignedScorerAccountId?: string;
   isPublicBroadcast?: boolean;
+  time?: string;
+  team1CaptainId?: string;
+  team1WicketkeeperId?: string;
+  team2CaptainId?: string;
+  team2WicketkeeperId?: string;
+  shareToken?: string;
+  isShareActive?: boolean;
+}
+
+export interface PlayerSearchMatchResult {
+  id: string;
+  name: string;
+  role: PlayingRole;
+  avatarUrl?: string;
+  avatarPreset?: AvatarPreset;
+  city?: string;
+  matchesCount: number;
+  isRegisteredUser: boolean;
+  isClaimed?: boolean;
+  email?: string;
+  phoneNumber?: string;
 }
 
 export interface ScoringCommandResult {

@@ -42,15 +42,15 @@ export class StorageError extends Error {
   }
 }
 
-const MATCH_KEY_PREFIX = '@cric_match_';
-const MATCH_INDEX_KEY_V2 = '@cric_match_ids_v2';
-const LEGACY_MATCHES_KEY = '@cric_matches_v1';
-const LEGACY_BACKUP_KEY = '@cric_matches_v1_backup';
-const TEAMS_STORAGE_KEY = '@cric_teams_v1';
-const USER_PROFILE_KEY = '@cric_user_profile_v1';
-const JOIN_REQUESTS_KEY = '@cric_join_requests_v1';
-const TOURNAMENTS_STORAGE_KEY = '@cric_tournaments_v1';
-const TOURNAMENT_ENTRIES_STORAGE_KEY = '@cric_tournament_entries_v1';
+export const MATCH_KEY_PREFIX = '@cric_match_';
+export const MATCH_INDEX_KEY_V2 = '@cric_match_ids_v2';
+export const LEGACY_MATCHES_KEY = '@cric_matches_v1';
+export const LEGACY_BACKUP_KEY = '@cric_matches_v1_backup';
+export const TEAMS_STORAGE_KEY = '@cric_teams_v1';
+export const USER_PROFILE_KEY = '@cric_user_profile_v1';
+export const JOIN_REQUESTS_KEY = '@cric_join_requests_v1';
+export const TOURNAMENTS_STORAGE_KEY = '@cric_tournaments_v1';
+export const TOURNAMENT_ENTRIES_STORAGE_KEY = '@cric_tournament_entries_v1';
 
 export interface UserProfile {
   id: string;

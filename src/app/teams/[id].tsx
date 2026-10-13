@@ -14,9 +14,10 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useCricket } from '../../context/CricketContext';
 import { Colors } from '../../utils/colors';
-import { PlayingRole, BattingHand, BowlingStyle, Player, Team } from '../../types/cricket';
+import { PlayingRole, BattingHand, BowlingStyle, Player, Team, PlayerSearchMatchResult } from '../../types/cricket';
 import { CricketHaptics } from '../../services/haptics';
 import { StatsRollupEngine } from '../../engine/statsRollupEngine';
+import { PlayerIdentityService } from '../../services/playerIdentityService';
 
 const ROLES: { key: PlayingRole; label: string }[] = [
   { key: 'batter', label: 'Batter' },
@@ -48,12 +49,19 @@ export default function TeamDetailScreen() {
 
   const [isAddMemberModalVisible, setIsAddMemberModalVisible] = useState(false);
 
+  // Search-First Member State
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [memberSearchResults, setMemberSearchResults] = useState<PlayerSearchMatchResult[]>([]);
+  const [isSearchingMember, setIsSearchingMember] = useState(false);
+  const [showManualMemberForm, setShowManualMemberForm] = useState(false);
+
   // New Member Form State
   const [playerName, setPlayerName] = useState('');
   const [playerRole, setPlayerRole] = useState<PlayingRole>('all-rounder');
   const [battingHand, setBattingHand] = useState<BattingHand>('right');
   const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle>('fast-medium');
   const [playerPhone, setPlayerPhone] = useState('');
+  const [playerEmail, setPlayerEmail] = useState('');
   const [isMatchGuestOnly, setIsMatchGuestOnly] = useState(false);
   const [isSubmittingMember, setIsSubmittingMember] = useState(false);
 
@@ -169,6 +177,76 @@ export default function TeamDetailScreen() {
     );
   };
 
+  const handleSearchMember = async (text: string) => {
+    setMemberSearchQuery(text);
+    if (!text.trim() || text.trim().length < 2) {
+      setMemberSearchResults([]);
+      return;
+    }
+    setIsSearchingMember(true);
+    try {
+      const results = await PlayerIdentityService.searchPlayerProfiles(text, userProfile?.id);
+      setMemberSearchResults(results);
+    } catch (e) {
+      console.warn('Search member error:', e);
+    } finally {
+      setIsSearchingMember(false);
+    }
+  };
+
+  const handleAddExistingMember = async (result: PlayerSearchMatchResult) => {
+    if (team.players.some((p) => p.id === result.id)) {
+      Alert.alert('Already on Roster', `${result.name} is already a member of this team.`);
+      return;
+    }
+
+    try {
+      setIsSubmittingMember(true);
+      CricketHaptics.milestone();
+
+      const newPlayer: Player = {
+        id: result.id,
+        name: result.name,
+        role: result.role,
+        battingHand: 'right',
+        bowlingStyle: 'fast-medium',
+        phoneNumber: result.phoneNumber,
+        email: result.email,
+        isGuest: !result.isClaimed,
+        isVerified: Boolean(result.isClaimed || result.isRegisteredUser),
+        isCaptain: team.players.length === 0,
+        isWicketkeeper: result.role === 'wicketkeeper',
+        careerStats: StatsRollupEngine.createEmptyCareerStats(),
+        recentScores: [],
+      };
+
+      const updatedPlayers = [...team.players, newPlayer];
+      const updatedTeam: Team = {
+        ...team,
+        captainPlayerId: team.captainPlayerId || (newPlayer.isCaptain ? newPlayer.id : undefined),
+        captainName: team.captainName || (newPlayer.isCaptain ? newPlayer.name : undefined),
+        players: updatedPlayers,
+      };
+
+      await saveTeam(updatedTeam);
+
+      setMemberSearchQuery('');
+      setMemberSearchResults([]);
+      setShowManualMemberForm(false);
+      setIsAddMemberModalVisible(false);
+
+      Alert.alert(
+        'Player Added! 🏏',
+        `${newPlayer.name} has been added to ${team.name}.`
+      );
+    } catch (err: any) {
+      CricketHaptics.wicket();
+      Alert.alert('Error', err.message || 'Failed to add player.');
+    } finally {
+      setIsSubmittingMember(false);
+    }
+  };
+
   const handleAddMemberSubmit = async () => {
     if (!playerName.trim()) {
       Alert.alert('Name Required', 'Please enter player full name.');
@@ -199,6 +277,7 @@ export default function TeamDetailScreen() {
         battingHand,
         bowlingStyle: playerRole === 'batter' ? undefined : bowlingStyle,
         phoneNumber: playerPhone.trim() || undefined,
+        email: playerEmail.trim() || undefined,
         isGuest: true, // unclaimed player profile
         isMatchGuest: isMatchGuestOnly,
         isCaptain: team.players.length === 0, // first player is default captain if roster was empty
@@ -220,6 +299,8 @@ export default function TeamDetailScreen() {
       // Reset form
       setPlayerName('');
       setPlayerPhone('');
+      setPlayerEmail('');
+      setShowManualMemberForm(false);
       setIsMatchGuestOnly(false);
       setIsAddMemberModalVisible(false);
 
@@ -423,160 +504,246 @@ export default function TeamDetailScreen() {
             </View>
 
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Name */}
-              <Text style={styles.inputLabel}>Player Full Name *</Text>
-              <TextInput
-                style={styles.formInput}
-                value={playerName}
-                onChangeText={setPlayerName}
-                placeholder="e.g. Suryakumar Yadav"
-                placeholderTextColor="#64748B"
-              />
+              {!showManualMemberForm ? (
+                <View>
+                  <Text style={styles.phoneDisclaimer}>
+                    Search registered profiles by email, phone, or name first to reuse existing stats.
+                  </Text>
 
-              {/* Playing Role */}
-              <Text style={styles.inputLabel}>Playing Role</Text>
-              <View style={styles.chipsRow}>
-                {ROLES.map((r) => (
+                  <TextInput
+                    style={styles.formInput}
+                    value={memberSearchQuery}
+                    onChangeText={handleSearchMember}
+                    placeholder="Search player by name, email, or phone..."
+                    placeholderTextColor="#64748B"
+                  />
+
+                  {isSearchingMember && (
+                    <Text style={[styles.phoneDisclaimer, { color: '#00E5FF', textAlign: 'center' }]}>
+                      Searching player profiles...
+                    </Text>
+                  )}
+
+                  {memberSearchResults.length > 0 && (
+                    <View style={{ marginBottom: 14 }}>
+                      <Text style={styles.searchResultsLabel}>Matching Profiles Found</Text>
+                      {memberSearchResults.map((p) => (
+                        <View key={p.id} style={styles.playerSearchItem}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.playerSearchName}>{p.name}</Text>
+                              {p.isClaimed && (
+                                <View style={styles.verifiedBadge}>
+                                  <Ionicons name="checkmark-circle" size={12} color="#00E676" />
+                                  <Text style={styles.verifiedBadgeText}>Verified</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.playerSearchMeta}>
+                              {p.role} • {p.city || 'Club'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.selectExistingPlayerBtn}
+                            onPress={() => handleAddExistingMember(p)}
+                          >
+                            <Text style={styles.selectExistingPlayerBtnText}>Add</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
                   <TouchableOpacity
-                    key={r.key}
-                    style={[
-                      styles.chipBtn,
-                      playerRole === r.key && styles.chipBtnActive,
-                    ]}
-                    onPress={() => setPlayerRole(r.key)}
+                    style={styles.manualPlayerToggleBtn}
+                    onPress={() => setShowManualMemberForm(true)}
                   >
-                    <Text
-                      style={[
-                        styles.chipBtnText,
-                        playerRole === r.key && styles.chipBtnTextActive,
-                      ]}
-                    >
-                      {r.label}
+                    <Ionicons name="person-add-outline" size={16} color="#00E5FF" />
+                    <Text style={styles.manualPlayerToggleText}>
+                      Player not found? Create new player profile
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Batting Hand */}
-              <Text style={styles.inputLabel}>Batting Hand</Text>
-              <View style={styles.chipsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.chipBtn,
-                    battingHand === 'right' && styles.chipBtnActive,
-                  ]}
-                  onPress={() => setBattingHand('right')}
-                >
-                  <Text
-                    style={[
-                      styles.chipBtnText,
-                      battingHand === 'right' && styles.chipBtnTextActive,
-                    ]}
+                </View>
+              ) : (
+                <View>
+                  <TouchableOpacity
+                    style={styles.backToSearchBtn}
+                    onPress={() => setShowManualMemberForm(false)}
                   >
-                    Right-Handed
-                  </Text>
-                </TouchableOpacity>
+                    <Ionicons name="arrow-back" size={14} color="#00E5FF" />
+                    <Text style={styles.backToSearchBtnText}>Back to search</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.chipBtn,
-                    battingHand === 'left' && styles.chipBtnActive,
-                  ]}
-                  onPress={() => setBattingHand('left')}
-                >
-                  <Text
-                    style={[
-                      styles.chipBtnText,
-                      battingHand === 'left' && styles.chipBtnTextActive,
-                    ]}
-                  >
-                    Left-Handed
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                  {/* Name */}
+                  <Text style={styles.inputLabel}>Player Full Name *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={playerName}
+                    onChangeText={setPlayerName}
+                    placeholder="e.g. Suryakumar Yadav"
+                    placeholderTextColor="#64748B"
+                  />
 
-              {/* Bowling Style (If not pure batter) */}
-              {playerRole !== 'batter' && (
-                <>
-                  <Text style={styles.inputLabel}>Bowling Style</Text>
+                  {/* Playing Role */}
+                  <Text style={styles.inputLabel}>Playing Role</Text>
                   <View style={styles.chipsRow}>
-                    {BOWLING_STYLES.map((bs) => (
+                    {ROLES.map((r) => (
                       <TouchableOpacity
-                        key={bs.key}
+                        key={r.key}
                         style={[
                           styles.chipBtn,
-                          bowlingStyle === bs.key && styles.chipBtnActive,
+                          playerRole === r.key && styles.chipBtnActive,
                         ]}
-                        onPress={() => setBowlingStyle(bs.key)}
+                        onPress={() => setPlayerRole(r.key)}
                       >
                         <Text
                           style={[
                             styles.chipBtnText,
-                            bowlingStyle === bs.key && styles.chipBtnTextActive,
+                            playerRole === r.key && styles.chipBtnTextActive,
                           ]}
                         >
-                          {bs.label}
+                          {r.label}
                         </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                </>
-              )}
 
-              {/* Optional Contact Phone */}
-              <Text style={styles.inputLabel}>
-                Contact Phone (Optional Private Contact)
-              </Text>
-              <TextInput
-                style={styles.formInput}
-                value={playerPhone}
-                onChangeText={setPlayerPhone}
-                placeholder="e.g. +91 98765 43210"
-                placeholderTextColor="#64748B"
-                keyboardType="phone-pad"
-              />
-              <Text style={styles.phoneDisclaimer}>
-                🔒 Private contact data only. Stored securely and never exposed in public team listings.
-              </Text>
+                  {/* Batting Hand */}
+                  <Text style={styles.inputLabel}>Batting Hand</Text>
+                  <View style={styles.chipsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.chipBtn,
+                        battingHand === 'right' && styles.chipBtnActive,
+                      ]}
+                      onPress={() => setBattingHand('right')}
+                    >
+                      <Text
+                        style={[
+                          styles.chipBtnText,
+                          battingHand === 'right' && styles.chipBtnTextActive,
+                        ]}
+                      >
+                        Right-Handed
+                      </Text>
+                    </TouchableOpacity>
 
-              {/* Member Scope Toggle: Permanent vs Match-Only Guest */}
-              <View style={styles.scopeBox}>
-                <TouchableOpacity
-                  style={styles.scopeRow}
-                  onPress={() => setIsMatchGuestOnly(!isMatchGuestOnly)}
-                >
-                  <View
+                    <TouchableOpacity
+                      style={[
+                        styles.chipBtn,
+                        battingHand === 'left' && styles.chipBtnActive,
+                      ]}
+                      onPress={() => setBattingHand('left')}
+                    >
+                      <Text
+                        style={[
+                          styles.chipBtnText,
+                          battingHand === 'left' && styles.chipBtnTextActive,
+                        ]}
+                      >
+                        Left-Handed
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Bowling Style (If not pure batter) */}
+                  {playerRole !== 'batter' && (
+                    <>
+                      <Text style={styles.inputLabel}>Bowling Style</Text>
+                      <View style={styles.chipsRow}>
+                        {BOWLING_STYLES.map((bs) => (
+                          <TouchableOpacity
+                            key={bs.key}
+                            style={[
+                              styles.chipBtn,
+                              bowlingStyle === bs.key && styles.chipBtnActive,
+                            ]}
+                            onPress={() => setBowlingStyle(bs.key)}
+                          >
+                            <Text
+                              style={[
+                                styles.chipBtnText,
+                                bowlingStyle === bs.key && styles.chipBtnTextActive,
+                              ]}
+                            >
+                              {bs.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </>
+                  )}
+
+                  {/* Optional Contact Email */}
+                  <Text style={styles.inputLabel}>
+                    Contact Email (Optional)
+                  </Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={playerEmail}
+                    onChangeText={setPlayerEmail}
+                    placeholder="player@example.com"
+                    placeholderTextColor="#64748B"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  {/* Optional Contact Phone */}
+                  <Text style={styles.inputLabel}>
+                    Contact Phone (Optional Private Contact)
+                  </Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={playerPhone}
+                    onChangeText={setPlayerPhone}
+                    placeholder="e.g. +91 98765 43210"
+                    placeholderTextColor="#64748B"
+                    keyboardType="phone-pad"
+                  />
+                  <Text style={styles.phoneDisclaimer}>
+                    🔒 Private contact data only. Stored securely and never exposed in public team listings.
+                  </Text>
+
+                  {/* Member Scope Toggle: Permanent vs Match-Only Guest */}
+                  <View style={styles.scopeBox}>
+                    <TouchableOpacity
+                      style={styles.scopeRow}
+                      onPress={() => setIsMatchGuestOnly(!isMatchGuestOnly)}
+                    >
+                      <View
+                        style={[
+                          styles.scopeRadio,
+                          isMatchGuestOnly && styles.scopeRadioActive,
+                        ]}
+                      >
+                        {isMatchGuestOnly && <View style={styles.scopeRadioDot} />}
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.scopeTitle}>Match-only Guest / Substitute</Text>
+                        <Text style={styles.scopeDesc}>
+                          {isMatchGuestOnly
+                            ? 'Added as a temporary match guest only. Will NOT alter the permanent team roster.'
+                            : 'Added as a permanent roster member of this team.'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Submit Button */}
+                  <TouchableOpacity
                     style={[
-                      styles.scopeRadio,
-                      isMatchGuestOnly && styles.scopeRadioActive,
+                      styles.submitMemberBtn,
+                      isSubmittingMember && { opacity: 0.6 },
                     ]}
+                    onPress={handleAddMemberSubmit}
+                    disabled={isSubmittingMember}
                   >
-                    {isMatchGuestOnly && <View style={styles.scopeRadioDot} />}
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.scopeTitle}>Match-only Guest / Substitute</Text>
-                    <Text style={styles.scopeDesc}>
-                      {isMatchGuestOnly
-                        ? 'Added as a temporary match guest only. Will NOT alter the permanent team roster.'
-                        : 'Added as a permanent roster member of this team.'}
+                    <Text style={styles.submitMemberBtnText}>
+                      {isSubmittingMember ? 'ADDING PLAYER...' : 'ADD PLAYER TO ROSTER'}
                     </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {/* Submit Button */}
-              <TouchableOpacity
-                style={[
-                  styles.submitMemberBtn,
-                  isSubmittingMember && { opacity: 0.6 },
-                ]}
-                onPress={handleAddMemberSubmit}
-                disabled={isSubmittingMember}
-              >
-                <Text style={styles.submitMemberBtnText}>
-                  {isSubmittingMember ? 'ADDING PLAYER...' : 'ADD PLAYER TO ROSTER'}
-                </Text>
-              </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -1001,5 +1168,86 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 13,
     letterSpacing: 0.5,
+  },
+  searchResultsLabel: {
+    color: '#00E5FF',
+    fontSize: 11,
+    fontWeight: '800',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  playerSearchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#121C38',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+  },
+  playerSearchName: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+    gap: 2,
+  },
+  verifiedBadgeText: {
+    color: '#00E676',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  playerSearchMeta: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  selectExistingPlayerBtn: {
+    backgroundColor: '#00E676',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  selectExistingPlayerBtnText: {
+    color: '#070D1E',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  manualPlayerToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#121C38',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1E2C4F',
+    gap: 6,
+    marginTop: 6,
+  },
+  manualPlayerToggleText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  backToSearchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 10,
+  },
+  backToSearchBtnText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

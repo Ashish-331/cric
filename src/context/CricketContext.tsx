@@ -48,6 +48,12 @@ interface CreateMatchParams {
   tossDecision?: TossDecision;
   totalOvers: number;
   playersPerTeam?: number;
+  playingXITeam1?: string[];
+  playingXITeam2?: string[];
+  team1CaptainId?: string;
+  team1WicketkeeperId?: string;
+  team2CaptainId?: string;
+  team2WicketkeeperId?: string;
   strikerId?: string;
   nonStrikerId?: string;
   openingBowlerId?: string;
@@ -57,6 +63,7 @@ interface CreateMatchParams {
   tournamentId?: string;
   status?: MatchStatus;
   date?: string;
+  time?: string;
 }
 
 interface CricketContextType {
@@ -90,7 +97,9 @@ interface CricketContextType {
       addSelfAsPlayer?: boolean;
       captainName?: string;
       captainPhone?: string;
+      captainEmail?: string;
       logoUrl?: string;
+      isOpponent?: boolean;
     }
   ) => Promise<Team>;
   // Ghost Accounts
@@ -443,7 +452,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setJoinRequests(result.allRequests);
   }, []);
 
-  // Create new team by user (with Add Yourself checkbox support)
+  // Create new team by user (with Add Yourself checkbox and Opponent delegation support)
   const createNewTeam = useCallback(
     async (
       name: string,
@@ -454,10 +463,13 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addSelfAsPlayer?: boolean;
         captainName?: string;
         captainPhone?: string;
+        captainEmail?: string;
         logoUrl?: string;
+        isOpponent?: boolean;
       }
     ): Promise<Team> => {
-      const addSelf = options?.addSelfAsPlayer ?? true;
+      const isOpponent = options?.isOpponent ?? false;
+      const addSelf = isOpponent ? false : (options?.addSelfAsPlayer ?? true);
       let players: Player[] = [];
       let captainPlayerId: string | undefined = undefined;
 
@@ -469,6 +481,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           battingHand: userProfile?.battingHand || 'right',
           bowlingStyle: userProfile?.bowlingStyle || 'fast-medium',
           phoneNumber: userProfile?.phoneNumber,
+          email: userProfile?.email,
           isCaptain: true,
           isVerified: userProfile?.isVerified ?? true,
           careerStats: StatsRollupEngine.createEmptyCareerStats(),
@@ -483,6 +496,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
           role: 'all-rounder',
           battingHand: 'right',
           phoneNumber: options.captainPhone?.trim() || undefined,
+          email: options.captainEmail?.trim() || undefined,
           isCaptain: true,
           isGuest: true,
           careerStats: StatsRollupEngine.createEmptyCareerStats(),
@@ -502,8 +516,10 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         captainPlayerId,
         captainName: options?.captainName,
         captainPhone: options?.captainPhone,
+        captainEmail: options?.captainEmail?.trim() || undefined,
+        captainStatus: isOpponent && options?.captainEmail ? 'invited' : 'active',
         createdByUserId: userProfile?.id,
-        managerUserId: userProfile?.id,
+        managerUserId: isOpponent ? undefined : userProfile?.id,
         inviteCode: `INV-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         players,
       };
@@ -512,12 +528,12 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const updated = await StorageService.getTeams();
       setTeams(updated);
 
-      // Link user to this team
-      if (userProfile) {
+      // Link user to this team only if creating user's own team and adding self
+      if (userProfile && !isOpponent && addSelf) {
         await updateUserProfile({
           teamId: newTeam.id,
-          role: addSelf ? 'captain' : userProfile.role,
-          claimedPlayerId: addSelf ? captainPlayerId : userProfile.claimedPlayerId,
+          role: 'captain',
+          claimedPlayerId: captainPlayerId,
         });
       }
 
@@ -1321,7 +1337,17 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         openingBowlerId
       );
 
-      const numPlayers = params.playersPerTeam || Math.max(team1.players.length, team2.players.length, 11);
+      const numPlayers = params.playersPerTeam || (params.playingXITeam1?.length ?? (team1.players.length > 0 ? team1.players.length : 11));
+
+      const playingXITeam1 =
+        params.playingXITeam1 && params.playingXITeam1.length > 0
+          ? params.playingXITeam1
+          : team1.players.map((p) => p.id).slice(0, numPlayers);
+
+      const playingXITeam2 =
+        params.playingXITeam2 && params.playingXITeam2.length > 0
+          ? params.playingXITeam2
+          : team2.players.map((p) => p.id).slice(0, numPlayers);
 
       const newMatch: Match = {
         id: generateUUID(),
@@ -1329,11 +1355,16 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         format,
         venue,
         date: params.date || new Date().toISOString().split('T')[0],
-        status: isScheduled ? 'scheduled' : 'live',
+        time: params.time,
+        status: params.status || (isScheduled ? 'scheduled' : 'live'),
         team1,
         team2,
-        playingXITeam1: team1.players.map((p) => p.id),
-        playingXITeam2: team2.players.map((p) => p.id),
+        team1CaptainId: params.team1CaptainId || team1.captainPlayerId || playingXITeam1[0],
+        team1WicketkeeperId: params.team1WicketkeeperId,
+        team2CaptainId: params.team2CaptainId || team2.captainPlayerId || playingXITeam2[0],
+        team2WicketkeeperId: params.team2WicketkeeperId,
+        playingXITeam1,
+        playingXITeam2,
         tossWinnerId: tossWinnerId || '',
         tossDecision: tossDecision || 'bat',
         ballType,
@@ -1343,7 +1374,7 @@ export const CricketProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignedScorerAccountId: userProfile?.role === 'scorer' ? userProfile?.id : undefined,
         tournamentId: params.tournamentId,
         rules: {
-          totalOvers,
+          totalOvers: Math.floor(totalOvers),
           playersPerTeam: numPlayers,
           wideValue: 1,
           noBallValue: 1,

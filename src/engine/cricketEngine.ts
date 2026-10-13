@@ -137,6 +137,67 @@ export function validateDeliveryInput(
   return { isValid: true };
 }
 
+/**
+ * Validates entered match overs per innings quota.
+ * Rejects decimals (e.g. 5.2), negative values, 0, non-digits, and quotas > 100.
+ * Automatically derives standard cricket format ('t20', 't10', 'odi', or 'custom').
+ */
+export function validateMatchOversQuota(input: string | number): {
+  valid: boolean;
+  overs: number;
+  format: 't20' | 't10' | 'odi' | 'custom';
+  error?: string;
+} {
+  const trimmed = typeof input === 'string' ? input.trim() : String(input);
+  if (!trimmed) {
+    return { valid: false, overs: 0, format: 'custom', error: 'Overs quota cannot be empty' };
+  }
+
+  // Reject decimal numbers explicitly with cricket explanation
+  if (trimmed.includes('.') || trimmed.includes(',')) {
+    return {
+      valid: false,
+      overs: 0,
+      format: 'custom',
+      error: 'In cricket, 5.2 represents 5 overs and 2 balls, not a decimal overs quota. Please enter a whole integer between 1 and 100.',
+    };
+  }
+
+  // Ensure entire string is numeric digits only
+  if (!/^\d+$/.test(trimmed)) {
+    return {
+      valid: false,
+      overs: 0,
+      format: 'custom',
+      error: 'Overs quota must contain only whole numeric digits',
+    };
+  }
+
+  const overs = parseInt(trimmed, 10);
+  if (overs <= 0) {
+    return {
+      valid: false,
+      overs: 0,
+      format: 'custom',
+      error: 'Overs quota must be at least 1 over',
+    };
+  }
+
+  if (overs > 100) {
+    return {
+      valid: false,
+      overs: 0,
+      format: 'custom',
+      error: 'Maximum supported match innings quota is 100 overs',
+    };
+  }
+
+  const format: 't20' | 't10' | 'odi' | 'custom' =
+    overs === 20 ? 't20' : overs === 10 ? 't10' : overs === 50 ? 'odi' : 'custom';
+
+  return { valid: true, overs, format };
+}
+
 export function validateDismissalLegality(
   type: DismissalType,
   context: { isNoBall: boolean; isWide: boolean; isFreeHit: boolean }

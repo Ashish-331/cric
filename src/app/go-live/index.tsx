@@ -15,11 +15,14 @@ import { Badge } from '../../components/common/Badge';
 import { supabase } from '../../services/supabaseClient';
 import { toCanonicalUUID } from '../../utils/uuid';
 import { PlayerPerformanceService } from '../../services/playerPerformanceService';
+import { StorageService } from '../../storage/storageService';
+import { Match } from '../../types/cricket';
 
 export default function GoLiveScreen() {
   const { matches, userProfile, teams, tournaments } = useCricket();
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [broadcastActive, setBroadcastActive] = useState<boolean>(false);
+  const [currentShareToken, setCurrentShareToken] = useState<string | null>(null);
 
   const authorizedMatches = userProfile?.id
     ? PlayerPerformanceService.getFilteredMatchesForUser(
@@ -43,7 +46,17 @@ export default function GoLiveScreen() {
       Alert.alert('No Match Selected', 'Please organize or select a match to start broadcasting.');
       return;
     }
+    const token = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     setBroadcastActive(true);
+    setCurrentShareToken(token);
+
+    const updatedMatch: Match = {
+      ...selectedMatch,
+      shareToken: token,
+      isShareActive: true,
+      lastUpdated: Date.now(),
+    };
+    await StorageService.saveMatch(updatedMatch);
 
     try {
       await supabase.from('live_broadcasts').insert({
@@ -52,6 +65,13 @@ export default function GoLiveScreen() {
         status: 'active',
         audience_visibility: 'public',
         created_by_account_id: userProfile?.id || null,
+      });
+
+      await supabase.from('match_share_sessions').insert({
+        match_id: toCanonicalUUID(selectedMatch.id),
+        share_token: token,
+        is_active: true,
+        created_by: userProfile?.id || null,
       });
     } catch (e) {
       console.warn('Notice: broadcast logged locally (offline):', e);
@@ -63,12 +83,49 @@ export default function GoLiveScreen() {
     );
   };
 
+  const handleStopScoreBroadcast = async () => {
+    if (!selectedMatch) return;
+    setBroadcastActive(false);
+
+    const updatedMatch: Match = {
+      ...selectedMatch,
+      isShareActive: false,
+      lastUpdated: Date.now(),
+    };
+    await StorageService.saveMatch(updatedMatch);
+
+    try {
+      if (currentShareToken || selectedMatch.shareToken) {
+        const token = currentShareToken || selectedMatch.shareToken;
+        await supabase
+          .from('match_share_sessions')
+          .update({ is_active: false, revoked_at: new Date().toISOString() })
+          .eq('share_token', token);
+      }
+      await supabase
+        .from('live_broadcasts')
+        .update({ status: 'completed' })
+        .eq('match_id', toCanonicalUUID(selectedMatch.id))
+        .eq('status', 'active');
+    } catch (e) {
+      console.warn('Notice: broadcast stop logged locally (offline):', e);
+    }
+
+    setCurrentShareToken(null);
+    Alert.alert('Broadcast Ended 🛑', 'The live score broadcast and share link have been stopped.');
+  };
+
   const handleSharePublicStream = async () => {
     if (!selectedMatch) return;
+    const token = currentShareToken || selectedMatch.shareToken;
+    const shareUrl = token
+      ? `https://cric.app/match/${selectedMatch.id}?share=${token}`
+      : `https://cric.app/match/${selectedMatch.id}`;
+
     try {
       await Share.share({
         title: `Live Match: ${selectedMatch.title}`,
-        message: `Follow live cricket score on Cric: ${selectedMatch.title} — https://cric.app/match/${selectedMatch.id}`,
+        message: `Follow live cricket score on Cric: ${selectedMatch.title} — ${shareUrl}`,
       });
     } catch (err: any) {
       console.warn('Share error:', err.message);
@@ -143,7 +200,7 @@ export default function GoLiveScreen() {
 
                 <TouchableOpacity
                   style={styles.stopBtn}
-                  onPress={() => setBroadcastActive(false)}
+                  onPress={handleStopScoreBroadcast}
                 >
                   <Text style={styles.stopBtnText}>Stop Sharing</Text>
                 </TouchableOpacity>
